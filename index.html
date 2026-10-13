@@ -70,6 +70,7 @@ textarea{font:inherit;border-radius:12px;border:1px solid var(--line);padding:12
 #msg .full{position:absolute;inset:0;background:var(--pr);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px;text-align:center}
 #msg .full .t{font-size:32px;font-weight:800;line-height:1.2}
 #msg .small{font-size:13px;opacity:.85}
+.hyf{display:flex;flex-direction:column;gap:6px;min-width:200px;color:#111}.hyf input:not([type=checkbox]),.hyf select{width:100%;box-sizing:border-box;padding:7px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#111;font:inherit}.hyf button{padding:8px 12px}
 </style>
 </head>
 <body>
@@ -237,15 +238,58 @@ function roadRoute(pts){
   }
   return null;
 }
-function hydIcon(color,sq,txt,faded){
-  const html='<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:'+color+';color:#fff;font:700 12px sans-serif;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);opacity:'+(faded?.55:1)+';border-radius:'+(sq?"6px":"50%")+'">'+txt+'</div>';
+function hydIcon(color,sq,txt,faded,tc){
+  const html='<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:'+color+';color:'+(tc||'#fff')+';font:700 12px sans-serif;border:2px solid '+(tc?'#3c3c43':'#fff')+';box-shadow:0 1px 4px rgba(0,0,0,.5);opacity:'+(faded?.55:1)+';border-radius:'+(sq?"6px":"50%")+'">'+txt+'</div>';
   return L.divIcon({html,className:"",iconSize:[24,24],iconAnchor:[12,12]});
 }
 let lastSig="";
+// ---------- Hydranten bearbeiten (nur Betreuer mit Zuordnung Einsatzleitung) ----------
+let showUn=LS.get("showUn")!=="0";
+function hydPopup(hy){
+  const gs=D.groups||[],cur=(gs.find(g=>(g.route||[]).includes(hy.id))||{}).id||0;
+  const opt=(v,t,sel)=>'<option value="'+v+'"'+(sel?" selected":"")+'>'+esc(t)+'</option>';
+  return '<div class="hyf"><b>Hydrant</b><input id="hy-s" placeholder="Straße / Name" value="'+esc(hy.street||"")+'">'+
+    '<input id="hy-d" placeholder="Beschreibung" value="'+esc(hy.description||"")+'"><input id="hy-l" placeholder="Auffälliger Punkt" value="'+esc(hy.landmark||"")+'">'+
+    '<select id="hy-t">'+opt("UEBERFLUR","Überflur",hy.type==="UEBERFLUR")+opt("UNTERFLUR","Unterflur",hy.type==="UNTERFLUR")+opt("UNBEKANNT","Art unbekannt",hy.type!=="UEBERFLUR"&&hy.type!=="UNTERFLUR")+'</select>'+
+    '<select id="hy-g">'+opt(0,"Keiner Gruppe",!cur)+gs.map(g=>opt(g.id,g.name,g.id===cur)).join("")+'</select>'+
+    '<label><input type="checkbox" id="hy-a"'+(hy.active?" checked":"")+'> in der Übung verwenden</label>'+
+    '<div style="display:flex;gap:6px"><button class="pr" data-hy="save" data-id="'+hy.id+'">Speichern</button><button data-hy="del" data-id="'+hy.id+'">Löschen</button></div>'+
+    '<div class="sub">Zum Verschieben den Punkt gedrückt halten und ziehen.</div></div>';
+}
+function hydMarker(hy,icon){
+  const el=isEL();
+  const m=L.marker([hy.lat,hy.lon],{icon,draggable:el}).addTo(layer);
+  if(el){
+    m.bindPopup(()=>hydPopup(hy),{minWidth:220});
+    m.on("dragend",()=>{const p=m.getLatLng();hy.lat=p.lat;hy.lon=p.lng;act("hydMove",{id:hy.id,lat:p.lat,lng:p.lng,lon:p.lng})});
+  }else m.bindPopup("<b>"+esc(hy.street||"Hydrant")+"</b><br>"+esc(hy.type==="UEBERFLUR"?"Überflur":hy.type==="UNTERFLUR"?"Unterflur":"Art unbekannt")+(hy.landmark?"<br>Punkt: "+esc(hy.landmark):""));
+  return m;
+}
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button[data-hy]");if(!t||!isEL())return;
+  const id=Number(t.dataset.id);
+  if(t.dataset.hy==="save"){
+    const v=i=>document.getElementById(i).value;
+    act("hydEdit",{id,street:v("hy-s"),description:v("hy-d"),landmark:v("hy-l"),type:v("hy-t"),active:document.getElementById("hy-a").checked});
+    const hyo=(D.hydrants||[]).find(x=>x.id===id),was=((D.groups||[]).find(g=>(g.route||[]).includes(id))||{}).id||0,ng=Number(v("hy-g"));
+    if(ng!==was&&document.getElementById("hy-a").checked)act("hydAssign",{id,groupId:ng});
+    map.closePopup();
+  }else if(t.dataset.hy==="del"){if(confirm("Hydrant wirklich löschen?")){act("hydDel",{id});map.closePopup()}}
+});
+function setupMapEL(){
+  if(!map||map._elInit)return;map._elInit=true;
+  map.on("contextmenu",e=>{if(!isEL())return;if(confirm("Neuen Hydranten hier anlegen?"))act("hydAdd",{lat:e.latlng.lat,lon:e.latlng.lng})});
+  const C=L.Control.extend({onAdd(){const b=L.DomUtil.create("button","unb");b.style.cssText="padding:6px 10px;border-radius:8px;border:0;background:#fff;color:#111;font:600 13px sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4)";
+    const upd=()=>{b.textContent=(showUn?"☑":"☐")+" Unbenutzte";b.style.display=isEL()?"":"none"};upd();
+    L.DomEvent.disableClickPropagation(b);b.onclick=()=>{showUn=!showUn;LS.set("showUn",showUn?"1":"0");lastSig="";drawLayers();upd()};
+    setInterval(upd,1500);return b}});
+  new C({position:"topright"}).addTo(map);
+}
 function drawLayers(){
   if(!D||!map)return;
+  setupMapEL();
   // nur neu zeichnen, wenn sich für die Karte etwas geändert hat (sonst schließen sich Popups ständig)
-  const sig=JSON.stringify([role,view,kidGroup,D.baseLat,D.baseLon,myPos,Object.keys(routeCache).length,(D.hydrants||[]).map(h=>[h.id,h.updatedAt]),
+  const sig=JSON.stringify([role,isEL(),showUn,view,kidGroup,D.baseLat,D.baseLon,myPos,Object.keys(routeCache).length,(D.hydrants||[]).map(h=>[h.id,h.updatedAt]),
     shownGroups().map(g=>[g.id,g.route,g.routeIndex,(g.stepTimes||[]).length>=5,g.vias,(g.track||[]).length,(g.track||[]).slice(-1)[0]])]);
   if(sig===lastSig)return;lastSig=sig;
   layer.clearLayers();
@@ -260,14 +304,23 @@ function drawLayers(){
       g.route.forEach((id,i)=>{
         const hy=(D.hydrants||[]).find(x=>x.id===id);if(!hy)return;
         const done=i<g.routeIndex||(i===g.routeIndex&&(g.stepTimes||[]).length>=5);
-        L.marker([hy.lat,hy.lon],{icon:hydIcon(color,hy.type==="UNTERFLUR",done?"✓":(i+1),done)}).addTo(layer)
-          .bindPopup("<b>"+esc(hy.street||"Hydrant")+"</b><br>"+esc(hy.type==="UEBERFLUR"?"Überflur":hy.type==="UNTERFLUR"?"Unterflur":"Art unbekannt")+(hy.landmark?"<br>Punkt: "+esc(hy.landmark):""));
+        hydMarker(hy,hydIcon(color,hy.type==="UNTERFLUR",done?"✓":(i+1),done));
       });
     }
     const tr=(g.track||[]).map(p=>[p[0],p[1]]);
     if(tr.length){
       L.polyline(tr,{color,weight:5}).addTo(layer);const l=tr[tr.length-1];all.push(l);
       L.marker(l,{icon:L.divIcon({html:'<div style="width:20px;height:20px;background:'+color+';border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6);transform:rotate(45deg)"></div>',className:"",iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:500}).addTo(layer).bindPopup(esc(g.name)+" – letzter Standort");
+    }
+  }
+  if(isEL()){
+    const inRoute=new Set(gs.flatMap(g=>g.route||[])),shownRoute=new Set(shownGroups().flatMap(g=>g.route||[]));
+    for(const hy of (D.hydrants||[])){
+      if(shownRoute.has(hy.id))continue;
+      if(inRoute.has(hy.id)&&view==="all")continue;
+      if(inRoute.has(hy.id))continue; // gehört einer ausgeblendeten Gruppe
+      if(!hy.active){if(showUn)hydMarker(hy,hydIcon("#aeaeb2",hy.type==="UNTERFLUR","",true))}
+      else hydMarker(hy,hydIcon("#fff",hy.type==="UNTERFLUR","H",false,"#3c3c43"));
     }
   }
   if(myPos){all.push(myPos);L.circleMarker(myPos,{radius:8,color:"#fff",weight:3,fillColor:"#0a84ff",fillOpacity:1}).addTo(layer)}
