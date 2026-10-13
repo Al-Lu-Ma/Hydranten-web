@@ -224,8 +224,8 @@ function wps(g,base){ // Wegpunkte der ganzen Route inkl. Zwischenpunkte (Via) u
   }
   pts.push(base);return pts;
 }
-function roadRoute(pts){
-  if(pts.length<3||pts.length>90)return null;
+function roadRoute(pts,min){
+  if(pts.length<(min||3)||pts.length>90)return null;
   const k=pts.map(p=>p[1].toFixed(5)+","+p[0].toFixed(5)).join(";");
   if(routeCache[k])return routeCache[k];
   if(!pending.has(k)){
@@ -309,7 +309,9 @@ function drawLayers(){
     }
     const tr=(g.track||[]).map(p=>[p[0],p[1]]);
     if(tr.length){
-      L.polyline(tr,{color,weight:5}).addTo(layer);const l=tr[tr.length-1];all.push(l);
+      const tp=[base,...tr],road2=roadRoute(tp,2);
+      L.polyline(road2||tp,{color,weight:5}).addTo(layer);const l=tr[tr.length-1];all.push(l);
+      (g.track||[]).slice(0,-1).forEach(p=>L.circleMarker([p[0],p[1]],{radius:5,color:"#fff",weight:2,fillColor:color,fillOpacity:1}).addTo(layer).bindPopup(esc(g.name)+" · "+clock(p[2])));
       L.marker(l,{icon:L.divIcon({html:'<div style="width:20px;height:20px;background:'+color+';border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6);transform:rotate(45deg)"></div>',className:"",iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:500}).addTo(layer).bindPopup(esc(g.name)+" – letzter Standort");
     }
   }
