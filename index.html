@@ -266,7 +266,7 @@ function checkMsgs(){
   if(m.style===0&&d>0)msgTimer=setTimeout(closeMsg,d*1000);
 }
 document.getElementById("msg").addEventListener("click",e=>{if(e.target.closest("[data-close]"))closeMsg()});
-// ---------- Durchsage senden (nur Betreuer mit Rolle „Einsatzleitung“) ----------
+// ---------- Durchsage senden (alle Betreuer; Löschen nur die Einsatzleitung in der App) ----------
 const sf={title:"",text:"",all:true,leader:false,kids:false,groups:[],people:[],style:1,color:0,dur:10,vibrate:true,status:""};
 function isLeaderRole(){const s=(D.supervisors||[]).find(x=>String(x.id)===me);return !!s&&s.role===0}
 function sendHtml(){
@@ -285,7 +285,7 @@ function sendHtml(){
     '<button class="pr" id="sf-go" style="width:100%">Senden</button><div class="sub" id="sf-st" style="margin-top:8px">'+esc(sf.status)+'</div></div>';
 }
 function renderSend(){
-  if(role!=="sup"||!D||!isLeaderRole()){put("send","");return}
+  if(role!=="sup"||!D){put("send","");return}
   const el=document.getElementById("send"),t=document.getElementById("sf-t"),x=document.getElementById("sf-x");
   const html=sendHtml();
   if(lastHtml.send===html)return;
