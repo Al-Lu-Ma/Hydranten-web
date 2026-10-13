@@ -40,6 +40,8 @@ button{cursor:pointer}button.pr{background:var(--pr);color:#fff;border:0;font-we
 .leg .s{background:none;border-top:3px solid var(--pr);height:0;width:18px;vertical-align:4px}
 summary{cursor:pointer;font-weight:600;list-style:none}summary::-webkit-details-marker{display:none}
 .err{color:var(--bad);margin:0 0 8px}
+textarea{font:inherit;border-radius:12px;border:1px solid var(--line);padding:12px 14px;background:var(--card);color:var(--tx);width:100%;min-height:70px}
+.col{display:inline-block;width:30px;height:30px;border-radius:50%;border:3px solid transparent;margin-right:8px}.col.on{border-color:var(--tx)}
 #msg{position:fixed;inset:0;z-index:2000;display:none}
 #msg.show{display:block}
 #msg .ban{position:absolute;top:calc(env(safe-area-inset-top) + 10px);left:12px;right:12px;max-width:600px;margin:0 auto;background:var(--pr);color:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
@@ -51,7 +53,7 @@ summary{cursor:pointer;font-weight:600;list-style:none}summary::-webkit-details-
 </style>
 </head>
 <body>
-<div id="msg"></div><div class="wrap"><div id="top"></div><div id="mapbox" style="display:none"></div><div id="mid"></div><div id="bottom"></div></div>
+<div id="msg"></div><div class="wrap"><div id="top"></div><div id="mapbox" style="display:none"></div><div id="mid"></div><div id="send"></div><div id="bottom"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
@@ -238,6 +240,7 @@ function locate(){
 // ---------- Durchsagen (klein / Popup / Vollbild) ----------
 let seenMsgs=new Set(JSON.parse(LS.get("seenMsgs")||"[]")),shownMsg=null,msgTimer=null;
 function forMe(m){
+  if(role!=="kid"&&String(m.sender)===me)return false;
   if(role==="kid")return !!(m.toAll||m.toKids||(m.toGroups||[]).includes(Number(kidGroup)));
   const s=(D.supervisors||[]).find(x=>String(x.id)===me);if(!s)return false;
   return !!(m.toAll||(m.toPeople||[]).map(String).includes(me)||(s.role>0&&(m.toGroups||[]).includes(s.role))||(s.role===0&&m.toLeader));
@@ -263,6 +266,64 @@ function checkMsgs(){
   if(m.style===0&&d>0)msgTimer=setTimeout(closeMsg,d*1000);
 }
 document.getElementById("msg").addEventListener("click",e=>{if(e.target.closest("[data-close]"))closeMsg()});
+// ---------- Durchsage senden (nur Betreuer mit Rolle „Einsatzleitung“) ----------
+const sf={title:"",text:"",all:true,leader:false,kids:false,groups:[],people:[],style:1,color:0,dur:10,vibrate:true,status:""};
+function isLeaderRole(){const s=(D.supervisors||[]).find(x=>String(x.id)===me);return !!s&&s.role===0}
+function sendHtml(){
+  const gs=D.groups||[],sup=(D.supervisors||[]).filter(x=>String(x.id)!==me);
+  const chip=(on,k,t)=>'<button class="chip'+(on?" on":"")+'" data-sf="'+k+'">'+esc(t)+'</button>';
+  return '<div class="card" style="margin-bottom:12px"><h2>Nachricht senden</h2>'+
+    '<div style="display:flex;flex-direction:column;gap:8px"><input id="sf-t" placeholder="Titel (leer = Nachricht von …)" maxlength="40"><textarea id="sf-x" placeholder="Nachricht" maxlength="300"></textarea></div>'+
+    '<div class="sub" style="margin:10px 0 6px">Vorlagen</div><div class="row">'+
+      '<button class="chip" data-sfp="0">Alle zurück</button><button class="chip" data-sfp="1">Funkkontrolle</button><button class="chip" data-sfp="2">Pause</button></div>'+
+    '<div class="sub" style="margin:10px 0 6px">An wen?</div><div class="row">'+chip(sf.all,"all","Alle")+chip(sf.leader,"leader","Einsatzleitung")+
+      gs.map(g=>chip(sf.groups.includes(g.id),"g"+g.id,g.name)).join("")+chip(sf.kids,"kids","Kinder")+sup.map(x=>chip(sf.people.includes(x.id),"p"+x.id,x.name)).join("")+'</div>'+
+    '<div class="sub" style="margin:10px 0 6px">Anzeige</div><div class="seg">'+["Klein","Popup","Vollbild"].map((t,i)=>'<button class="'+(sf.style===i?"on":"")+'" data-sfs="'+i+'">'+t+'</button>').join("")+'</div>'+
+    (sf.style===0?'<div class="seg" style="margin-top:8px">'+[[5,"5 s"],[10,"10 s"],[30,"30 s"],[0,"Bleibt"]].map(([v,t])=>'<button class="'+(sf.dur===v?"on":"")+'" data-sfd="'+v+'">'+t+'</button>').join("")+'</div>':'')+
+    '<div class="sub" style="margin:10px 0 6px">Farbe</div><div>'+MCOL.map((c,i)=>'<span class="col'+(sf.color===i?" on":"")+'" style="background:'+c+'" data-sfc="'+i+'"></span>').join("")+'</div>'+
+    '<label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" id="sf-v"'+(sf.vibrate?" checked":"")+' data-sfv="1" style="width:auto"> Vibration (kein Ton)</label>'+
+    '<button class="pr" id="sf-go" style="width:100%">Senden</button><div class="sub" id="sf-st" style="margin-top:8px">'+esc(sf.status)+'</div></div>';
+}
+function renderSend(){
+  if(role!=="sup"||!D||!isLeaderRole()){put("send","");return}
+  const el=document.getElementById("send"),t=document.getElementById("sf-t"),x=document.getElementById("sf-x");
+  const html=sendHtml();
+  if(lastHtml.send===html)return;
+  lastHtml.send=html;el.innerHTML=html;
+  document.getElementById("sf-t").value=sf.title;document.getElementById("sf-x").value=sf.text;
+}
+document.addEventListener("input",e=>{if(e.target.id==="sf-t")sf.title=e.target.value;if(e.target.id==="sf-x")sf.text=e.target.value});
+async function sendMsg(){
+  const text=sf.text.trim();
+  if(!text){sf.status="Bitte eine Nachricht eingeben.";lastHtml.send="";renderSend();return}
+  if(!(sf.all||sf.leader||sf.kids||sf.groups.length||sf.people.length)){sf.status="Bitte auswählen, an wen.";lastHtml.send="";renderSend();return}
+  if(!client||!connected){sf.status="Keine Verbindung.";lastHtml.send="";renderSend();return}
+  const id=Date.now();
+  const msg={id,title:sf.title.trim(),text,style:sf.style,color:sf.color,vibrate:sf.vibrate,durationSec:sf.dur,toAll:sf.all,toLeader:sf.leader,toKids:sf.kids,toGroups:sf.groups,toPeople:sf.people};
+  try{client.publish(topic,await encrypt(JSON.stringify({cmd:"msg",name:uname,msg})),{qos:1,retain:false})}catch(e){}
+  sf.status="Wird gesendet …";sf.text="";sf.title="";lastHtml.send="";renderSend();
+  setTimeout(()=>{sf.status=(D.messages||[]).some(m=>m.id===id)?"Gesendet ✓":"Nicht angekommen – ist die Einsatzleitung online (Cloud an)?";lastHtml.send="";renderSend()},6000);
+}
+const SFP=[["ACHTUNG","Alle zurück zum Gerätehaus",2,1,0],["","Funkkontrolle",0,0,10],["Pause","Kurze Pause, wir melden uns.",1,3,10]];
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-sf],[data-sfp],[data-sfs],[data-sfd],[data-sfc],#sf-go");if(!t)return;
+  const d=t.dataset;
+  if(t.id==="sf-go"){sendMsg();return}
+  if(d.sfp!==undefined){const p=SFP[+d.sfp];sf.title=p[0];sf.text=p[1];sf.style=p[2];sf.color=p[3];sf.dur=p[4];sf.status=""}
+  else if(d.sfs!==undefined)sf.style=+d.sfs;
+  else if(d.sfd!==undefined)sf.dur=+d.sfd;
+  else if(d.sfc!==undefined)sf.color=+d.sfc;
+  else if(d.sf){
+    const k=d.sf;
+    if(k==="all"){sf.all=!sf.all;if(sf.all){sf.leader=false;sf.kids=false;sf.groups=[];sf.people=[]}}
+    else{sf.all=false;
+      if(k==="leader")sf.leader=!sf.leader;else if(k==="kids")sf.kids=!sf.kids;
+      else if(k[0]==="g"){const v=+k.slice(1);sf.groups=sf.groups.includes(v)?sf.groups.filter(x=>x!==v):[...sf.groups,v]}
+      else if(k[0]==="p"){const v=+k.slice(1);sf.people=sf.people.includes(v)?sf.people.filter(x=>x!==v):[...sf.people,v]}}
+  }
+  lastHtml.send="";renderSend();
+});
+document.addEventListener("change",e=>{if(e.target.id==="sf-v")sf.vibrate=e.target.checked});
 // ---------- Anzeige ----------
 const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
 const clock=ms=>new Date(ms).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
@@ -324,7 +385,7 @@ function render(){
     b+='<div class="card log" style="margin-bottom:12px"><h2>Zeitstrahl</h2>'+(log.length?log.map(l=>'<div><span class="sub">'+clock(l.at)+'</span> '+esc(l.text)+'</div>').join(""):'<div class="sub">Noch nichts.</div>')+'</div>';
   }
   b+='<div class="sub" style="text-align:center;padding-bottom:8px">Nur-Lesen-Ansicht · Karte © OpenStreetMap</div>';
-  put("bottom",b);
+  put("bottom",b);renderSend();
 }
 // Klicks zentral (die Bereiche werden neu geschrieben, die Karte nie)
 document.addEventListener("click",e=>{
