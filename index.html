@@ -92,7 +92,7 @@ const myId="w"+Math.random().toString(36).slice(2,9).padEnd(7,"0"), senderId=myI
 async function setupKey(c){
   // v2: eigener Salt je Kanal, 120000 Runden; der Themen-Name wird aus dem Schlüssel abgeleitet (nicht direkt aus der PIN)
   const base=await crypto.subtle.importKey("raw",enc.encode(c),"PBKDF2",false,["deriveBits"]);
-  const raw=await crypto.subtle.deriveBits({name:"PBKDF2",salt:enc.encode("hu-v2|"+(role==="kid"?2:role==="el"?3:1)),iterations:120000,hash:"SHA-1"},base,256);
+  const raw=await crypto.subtle.deriveBits({name:"PBKDF2",salt:enc.encode("hu-v2|"+(role==="kid"?2:1)),iterations:120000,hash:"SHA-1"},base,256);
   key=await crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt","decrypt"]);
   const hk=await crypto.subtle.importKey("raw",raw,{name:"HMAC",hash:"SHA-256"},false,["sign"]);
   const t=await crypto.subtle.sign("HMAC",hk,enc.encode("topic"));
@@ -130,19 +130,20 @@ function merge(a,b){
     settingsAt:Math.max(a.settingsAt||0,b.settingsAt||0),
     baseLat:newS?b.baseLat:a.baseLat,baseLon:newS?b.baseLon:a.baseLon,
     planBudgetMin:newS?b.planBudgetMin:a.planBudgetMin,intervalSec:newS?b.intervalSec:a.intervalSec,
-    webPin:b.webPin!==undefined?b.webPin:a.webPin,kidsPin:b.kidsPin!==undefined?b.kidsPin:a.kidsPin,elPin:b.elPin!==undefined?b.elPin:a.elPin,
+    webPin:b.webPin!==undefined?b.webPin:a.webPin,kidsPin:b.kidsPin!==undefined?b.kidsPin:a.kidsPin,
     endFlag:newE?b.endFlag:a.endFlag,endFlagAt:Math.max(a.endFlagAt||0,b.endFlagAt||0)};
 }
 function onData(json){
   let b;try{b=JSON.parse(json)}catch(e){return}
   D=merge(D,b);if((b.groups||[]).length)lastData=Date.now();
   if(role==="kid"&&Array.isArray(b.messages)&&(b.groups||[]).length)D.messages=b.messages; // Kinder: Stand der Einsatzleitung gilt
-  if(D.endFlag&&role!=="el"){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
-  if(role!=="kid"&&!findMe()){loginErr=role==="el"?"Name nicht gefunden oder ohne Rolle „Einsatzleitung“ (Team-Tab der App).":"Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
+  if(role==="sup"&&(b.groups||[]).length&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
+  if(D.endFlag&&!isEL()){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
   render();drawLayers();checkMsgs();
 }
 const norm=s=>String(s||"").trim().toLowerCase().replace(/\s+/g," ");
-function findMe(){const s=(D.supervisors||[]).find(x=>norm(x.name)===norm(uname)&&(role!=="el"||x.role===0));if(s){me=String(s.id);return true}return false}
+function findMe(){const s=(D.supervisors||[]).find(x=>norm(x.name)===norm(uname));if(s){me=String(s.id);return true}return false}
+function isEL(){const s=(D.supervisors||[]).find(x=>String(x.id)===me);return role==="sup"&&!!s&&s.role===0}
 function logout(clear){
   try{client&&client.end(true)}catch(e){}client=null;connected=false;D=null;
   if(clear){LS.del("pin");LS.del("name");uname="";loginErr="";tab="kid"}else LS.del("pin");
@@ -357,7 +358,7 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("change",e=>{if(e.target.id==="sf-v")sf.vibrate=e.target.checked});
 // ---------- Einsatzleitung im Web: alles einstellen (Befehle werden in der App geprüft) ----------
-const ctlOpen={groups:true,plan:false,sup:false,msg:false,pin:false,end:false};
+const ctlOpen={groups:true,plan:false,sup:false,msg:false,end:false};
 let toastT=null;
 function toast(t){const e=document.getElementById("toast");e.textContent=t;e.className="show";clearTimeout(toastT);toastT=setTimeout(()=>e.className="",2500)}
 async function act(a,p){
@@ -367,7 +368,7 @@ async function act(a,p){
 function ctlHtml(){
   const gs=D.groups||[],sup=D.supervisors||[];
   const sec=(k,t,body)=>'<div class="card sec" style="margin-bottom:12px"><button class="h" data-sec="'+k+'"><span>'+t+'</span><span>'+(ctlOpen[k]?"−":"+")+'</span></button>'+(ctlOpen[k]?'<div class="body">'+body+'</div>':'')+'</div>';
-  let h='<h2 style="margin:4px 4px 8px">Einsatzleitung · Steuerung</h2>';
+  let h='<h2 style="margin:4px 4px 8px">Einstellungen (Einsatzleitung)</h2>';
   h+=sec("groups","Gruppen & Übung",gs.map(g=>{
     const n=(g.stepTimes||[]).length,st=!g.startedAt?"bereit":(n>=5?"fertig":"Schritt "+n+"/5");
     return '<div><div class="rowi"><input id="rn-'+g.id+'" value="'+esc(g.name)+'" maxlength="30"><button data-act="rename" data-gid="'+g.id+'">Umbenennen</button></div>'+
@@ -380,17 +381,16 @@ function ctlHtml(){
     '<div class="rowi"><input id="sup-new" placeholder="Name hinzufügen" maxlength="40"><button data-act="supAdd">Hinzufügen</button></div>');
   const ms=(D.messages||[]).slice().reverse();
   h+=sec("msg","Nachrichten-Verlauf ("+ms.length+")",(ms.length?ms.map(m=>'<div class="rowi"><span style="flex:1;font-size:14px"><span class="sub">'+clock(m.id)+'</span> '+esc(m.title?m.title+": ":"")+esc(m.text)+'</span><button class="danger" data-act="msgDel" data-id="'+m.id+'">✕</button></div>').join("")+'<button class="danger" data-act="msgClear" data-confirm="Alle Nachrichten löschen?">Alle löschen</button>':'<div class="sub">Noch keine Nachrichten.</div>'));
-  h+=sec("pin","PINs",[["web","Betreuer-PIN",D.webPin],["kids","Kinder-PIN",D.kidsPin],["el","EL-PIN",D.elPin]].map(([w,l,v])=>'<div class="rowi"><span style="flex:1">'+l+'<br><span class="pin">'+esc(v||"–")+'</span></span><button data-copy="'+esc(v||"")+'">Kopieren</button><button data-act="pin" data-which="'+w+'" data-confirm="Neue '+l+' erzeugen? Die alte gilt dann nicht mehr.">Neu</button></div>').join(""));
   h+=sec("end","Übung beenden",D.endFlag?'<div class="sub">Die Übung ist beendet. Betreuer und Kinder sind gesperrt.</div><button class="pr" data-act="end" data-on="0">Wieder freigeben</button>':'<div class="sub">Alle Betreuer- und Kinder-Ansichten löschen ihre Daten und sind gesperrt.</div><button class="danger" data-act="end" data-on="1" data-confirm="Übung wirklich beenden? Alle Web-Ansichten werden gesperrt.">Übung beenden …</button>');
   return h;
 }
-function renderCtl(){if(role!=="el"||!D){put("ctl","");return}put("ctl",ctlHtml())}
+function renderCtl(){if(!D||!isEL()){put("ctl","");return}put("ctl",ctlHtml())}
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-sec],[data-act],[data-copy]");if(!t)return;
   const d=t.dataset;
   if(d.sec){ctlOpen[d.sec]=!ctlOpen[d.sec];lastHtml.ctl="";renderCtl();return}
   if(d.copy!==undefined){try{navigator.clipboard.writeText(d.copy);toast("Kopiert ✓")}catch(x){toast("Kopieren nicht möglich")}return}
-  if(role!=="el")return;
+  if(!isEL())return;
   if(d.confirm&&!confirm(d.confirm))return;
   const g=+d.gid,id=+d.id,a=d.act;
   if(a==="rename"){const v=(document.getElementById("rn-"+g)||{}).value||"";if(!v.trim()){toast("Name fehlt");return}act("rename",{groupId:g,name:v})}
@@ -403,9 +403,8 @@ document.addEventListener("click",e=>{
   else if(a==="msgDel")act("msgDel",{id});
   else if(a==="msgClear")act("msgClear",{});
   else if(a==="end")act("end",{on:d.on==="1"});
-  else if(a==="pin")act("pin",{which:d.which});
-});
-document.addEventListener("change",e=>{const sel=e.target.closest("select[data-supid]");if(sel&&role==="el")act("supRole",{id:+sel.dataset.supid,role:+sel.value})});
+  });
+document.addEventListener("change",e=>{const sel=e.target.closest("select[data-supid]");if(sel&&isEL())act("supRole",{id:+sel.dataset.supid,role:+sel.value})});
 // Größe (A−/A+) und Ausrichtung
 let zoom=parseFloat(LS.get("zoom"))||1;
 function applyZoom(){document.documentElement.style.setProperty("--z",zoom);setTimeout(()=>{if(map)map.invalidateSize()},60)}
@@ -430,10 +429,10 @@ function render(){
   if(code.length!==8||(role!=="kid"&&!uname)){
     const kid=tab==="kid";
     screen('<div class="card"><h1>Hydranten-Übung</h1><p class="sub" style="margin:4px 0 12px">Nur-Lesen-Ansicht. Die PIN bekommst du von der Einsatzleitung.</p>'+
-      '<div class="seg" style="margin-bottom:12px"><button data-t="sup" class="'+(tab==="sup"?"on":"")+'">Betreuer</button><button data-t="kid" class="'+(kid?"on":"")+'">Kinder</button><button data-t="el" class="'+(tab==="el"?"on":"")+'">Einsatzleitung</button></div>'+
+      '<div class="seg" style="margin-bottom:12px"><button data-t="sup" class="'+(tab==="sup"?"on":"")+'">Betreuer</button><button data-t="kid" class="'+(kid?"on":"")+'">Kinder</button></div>'+
       (loginErr?'<p class="err">'+esc(loginErr)+'</p>':'')+
       '<div style="display:flex;flex-direction:column;gap:8px">'+(kid?'':'<input id="n" placeholder="Name" autocomplete="name" value="'+esc(uname)+'">')+
-      '<input id="c" inputmode="numeric" maxlength="8" placeholder="'+(tab==="el"?"EL-PIN":tab==="sup"?"Betreuer-PIN":"Kinder-PIN")+' (8 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>');
+      '<input id="c" inputmode="numeric" maxlength="8" placeholder="'+(tab==="sup"?"Betreuer-PIN":"Kinder-PIN")+' (8 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>');
     return;
   }
   const head='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'<button id="zm" title="Alles kleiner">A−</button><button id="zp" title="Alles größer">A+</button></div>';
