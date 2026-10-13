@@ -6,6 +6,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Hydranten">
 <title>Hydranten-Übung</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="icon" type="image/png" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#FF3B30">
 <!-- Autor: Alex · Nur-Lesen-Ansicht (Betreuer + Kinder), gleiche Verschlüsselung wie die App -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
@@ -85,7 +89,7 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 
 let role=LS.get("role")||"kid";            // sup = Betreuer, kid = Kinder
 let code=LS.get("pin")||"", uname=LS.get("name")||"", me="", view=LS.get("view")||"mine", kidGroup=LS.get("kidGroup")||"";
-let loginErr="", D=null, client=null, key=null, topic="", brokerIdx=0, connected=false, ended=false, lastData=0, myPos=null, geoId=null, tab=role;
+let loginErr="", connErr="", clients=[], up=new Set(), D=null, client=null, key=null, topic="", brokerIdx=0, connected=false, ended=false, lastData=0, myPos=null, geoId=null, tab=role;
 const myId="w"+Math.random().toString(36).slice(2,9).padEnd(7,"0"), senderId=myId.slice(0,8);
 
 // ---------- Verschlüsselung (wie in der App: PBKDF2-SHA1 · AES-256-GCM · gzip) ----------
@@ -138,38 +142,45 @@ function onData(json){
   D=merge(D,b);if((b.groups||[]).length)lastData=Date.now();
   if(role==="kid"&&Array.isArray(b.messages)&&(b.groups||[]).length)D.messages=b.messages; // Kinder: Stand der Einsatzleitung gilt
   if(role==="sup"&&(b.groups||[]).length&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal)."+((D.supervisors||[]).length?" Eingetragen sind: "+(D.supervisors||[]).map(x=>x.name).join(", ")+".":" Dort ist noch kein Betreuer eingetragen – erst in der App im Team-Tab hinzufügen.");logout(false);return}
-  if(D.endFlag&&!isEL()){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
+  if(D.endFlag&&!isEL()){ended=true;D=null;LS.del("pin");LS.del("name");endAll();render();return}
   render();drawLayers();checkMsgs();
 }
 const norm=s=>String(s||"").trim().toLowerCase().replace(/\s+/g," ");
 function findMe(){const s=(D.supervisors||[]).find(x=>norm(x.name)===norm(uname));if(s){me=String(s.id);return true}return false}
 function isEL(){const s=(D.supervisors||[]).find(x=>String(x.id)===me);return role==="sup"&&!!s&&s.role===0}
 function logout(clear){
-  try{client&&client.end(true)}catch(e){}client=null;connected=false;D=null;
+  endAll();D=null;
   if(clear){LS.del("pin");LS.del("name");uname="";loginErr="";tab="kid"}else LS.del("pin");
   code="";render();
 }
 
 // ---------- Verbindung ----------
-async function hello(){
-  if(!client||!connected)return;
-  try{client.publish(topic,await encrypt(JSON.stringify({v:1,hydrants:[],groups:[],supervisors:[],log:[]})),{qos:1,retain:false})}catch(e){}
+function endAll(){clients.forEach(c=>{try{c.end(true)}catch(e){}});clients=[];up.clear();client=null;connected=false}
+async function hello(only){
+  if(!up.size)return;
+  try{const d=await encrypt(JSON.stringify({v:1,hydrants:[],groups:[],supervisors:[],log:[]}));
+    for(const c of (only?[only]:[...up]))c.publish(topic,d,{qos:1,retain:false})}catch(e){}
 }
 function connect(){
   if(code.length!==8)return render();
-  render();
+  render();connErr="";
+  if(typeof mqtt==="undefined"){connErr="Die Verbindungs-Bibliothek wurde nicht geladen (Werbe-/Tracking-Blocker oder kein Internet?).";return render()}
   setupKey(code).then(()=>{
-    try{client&&client.end(true)}catch(e){}
-    client=mqtt.connect(BROKERS[brokerIdx%BROKERS.length],{clientId:"hu-"+myId+Math.floor(Math.random()*99999),clean:true,reconnectPeriod:4000,connectTimeout:10000,keepalive:30});
-    client.on("connect",()=>{connected=true;client.subscribe(topic,{qos:1},err=>{if(!err)hello()});render()});
-    client.on("message",async(t,m)=>{try{const j=await decrypt(m);if(j)onData(j)}catch(e){}});
-    client.on("close",()=>{connected=false;render()});
-    client.on("error",()=>{brokerIdx++;connected=false;render()});
-  }).catch(()=>render());
+    endAll();
+    // mit BEIDEN Servern gleichzeitig verbinden – die App ist auf mindestens einem davon erreichbar
+    BROKERS.forEach(url=>{
+      const c=mqtt.connect(url,{clientId:"hu-"+myId+Math.floor(Math.random()*99999),clean:true,reconnectPeriod:4000,connectTimeout:10000,keepalive:30});
+      clients.push(c);
+      c.on("connect",()=>{up.add(c);connected=true;if(!client||!up.has(client))client=c;c.subscribe(topic,{qos:1},err=>{if(!err)hello(c)});render()});
+      c.on("message",async(t,m)=>{try{const j=await decrypt(m);if(j)onData(j)}catch(e){}});
+      c.on("close",()=>{up.delete(c);connected=up.size>0;if(client===c)client=[...up][0]||null;render()});
+      c.on("error",e=>{connErr=String((e&&e.message)||e||"Fehler");render()});
+    });
+  }).catch(e=>{connErr="Fehler: "+(e&&e.message||e);render()});
 }
 // Heartbeat: regelmäßig den aktuellen Stand anfordern; beim Zurückkehren in die Seite sofort
 setInterval(()=>{if(connected&&(!lastData||Date.now()-lastData>20000))hello()},4000);
-document.addEventListener("visibilitychange",()=>{if(!document.hidden&&client){if(!connected)try{client.reconnect()}catch(e){}else hello()}});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&clients.length){clients.forEach(c=>{if(!c.connected)try{c.reconnect()}catch(e){}});hello()}});
 
 // ---------- Karte (bleibt bestehen – wird nie neu gebaut, deshalb kein Flackern) ----------
 let map=null,mapEl=null,layer=null,fitKey="",routeCache=JSON.parse(LS.get("routes")||"{}"),pending=new Set();
@@ -437,7 +448,7 @@ function render(){
   }
   const head='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'<button id="zm" title="Alles kleiner">A−</button><button id="zp" title="Alles größer">A+</button></div>';
   if(!D){
-    screen(head+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kanal-ID: <b>'+esc(topic.slice(-6))+'</b> · Server: '+(connected?'verbunden':'nicht verbunden (Internet/Server?)')+' – die Kanal-ID muss mit der in der App (Team-Tab) übereinstimmen.</p><p class="sub">Kommt nach ein paar Sekunden nichts: 1) PIN stimmt? (Betreuer-PIN bzw. Kinder-PIN) 2) Auf dem Gerät der Einsatzleitung die App öffnen und „Mobilfunk / Internet“ einschalten. Im Team-Tab steht dort „Web-Kanal bereit“.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>');
+    screen(head+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kanal-ID: <b>'+esc(topic.slice(-6))+'</b> · Server: '+(connected?'verbunden':'nicht verbunden (Internet/Server?)')+(connErr?' · '+esc(connErr):'')+' – die Kanal-ID muss mit der in der App (Team-Tab) übereinstimmen.</p><p class="sub">Kommt nach ein paar Sekunden nichts: 1) PIN stimmt? (Betreuer-PIN bzw. Kinder-PIN) 2) Auf dem Gerät der Einsatzleitung die App öffnen und „Mobilfunk / Internet“ einschalten. Im Team-Tab steht dort „Web-Kanal bereit“.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>');
     return;
   }
   const gs=D.groups||[];
