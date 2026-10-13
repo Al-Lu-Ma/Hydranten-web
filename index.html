@@ -205,8 +205,13 @@ function hydIcon(color,sq,txt,faded){
   const html='<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:'+color+';color:#fff;font:700 12px sans-serif;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);opacity:'+(faded?.55:1)+';border-radius:'+(sq?"6px":"50%")+'">'+txt+'</div>';
   return L.divIcon({html,className:"",iconSize:[24,24],iconAnchor:[12,12]});
 }
+let lastSig="";
 function drawLayers(){
   if(!D||!map)return;
+  // nur neu zeichnen, wenn sich für die Karte etwas geändert hat (sonst schließen sich Popups ständig)
+  const sig=JSON.stringify([role,view,kidGroup,D.baseLat,D.baseLon,myPos,Object.keys(routeCache).length,(D.hydrants||[]).map(h=>[h.id,h.updatedAt]),
+    shownGroups().map(g=>[g.id,g.route,g.routeIndex,(g.stepTimes||[]).length>=5,g.vias,(g.track||[]).length,(g.track||[]).slice(-1)[0]])]);
+  if(sig===lastSig)return;lastSig=sig;
   layer.clearLayers();
   const base=(D.baseLat&&D.baseLon)?[D.baseLat,D.baseLon]:BASE,all=[base],gs=D.groups||[];
   L.marker(base,{icon:L.divIcon({html:'<div style="font-size:22px;filter:drop-shadow(0 1px 2px #000)">🏠</div>',className:"",iconSize:[26,26],iconAnchor:[13,13]})}).addTo(layer).bindPopup("Gerätehaus (Start und Ziel)");
