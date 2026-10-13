@@ -27,7 +27,7 @@ button{cursor:pointer}button.pr{background:var(--pr);color:#fff;border:0;font-we
 .seg button.on{background:var(--card);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}
 .led{width:9px;height:9px;border-radius:50%;background:var(--sub)}.led.on{background:var(--ok);box-shadow:0 0 0 3px rgba(48,176,80,.25)}
-#mapslot,#map{height:50vh;min-height:280px;border-radius:18px;overflow:hidden}
+#mapbox,#map{height:50vh;min-height:280px;border-radius:18px;overflow:hidden}
 .dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px}
 .step{display:flex;gap:8px;padding:3px 0}.step.done{color:var(--sub)}
 .big{font-size:20px;font-weight:700}
@@ -43,7 +43,7 @@ summary{cursor:pointer;font-weight:600;list-style:none}summary::-webkit-details-
 </style>
 </head>
 <body>
-<div class="wrap" id="app"></div>
+<div class="wrap"><div id="top"></div><div id="mapbox" style="display:none"></div><div id="mid"></div><div id="bottom"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
@@ -146,10 +146,15 @@ function ensureMap(){
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
   layer=L.layerGroup().addTo(map);
 }
-function attachMap(){
-  const slot=document.getElementById("mapslot");if(!slot||!mapEl)return;
-  if(mapEl.parentNode!==slot){slot.replaceWith(mapEl)}else return;
-  setTimeout(()=>map.invalidateSize(),50);
+function showMap(on){
+  const box=document.getElementById("mapbox");
+  if(on){ensureMap();if(mapEl.parentNode!==box){box.appendChild(mapEl);setTimeout(()=>map.invalidateSize(),50)}
+    if(box.style.display==="none"){box.style.display="";setTimeout(()=>map.invalidateSize(),50)}}
+  else box.style.display="none";
+}
+const lastHtml={};
+function put(id,html){ // nur schreiben, wenn sich etwas geändert hat – so flackert nichts
+  if(lastHtml[id]===html)return;lastHtml[id]=html;document.getElementById(id).innerHTML=html;
 }
 function shownGroups(){
   const gs=D.groups||[];
@@ -232,66 +237,74 @@ function legend(){
     '<span><i class="d"></i>geplante Route</span><span><i class="s"></i>gelaufener Weg</span>'+
     '<span>🏠 Gerätehaus</span><span><i style="transform:rotate(45deg)"></i>letzter Standort</span></div></details>';
 }
+function screen(html){put("top",html);put("mid","");put("bottom","");showMap(false)}
 function render(){
-  const app=document.getElementById("app");
-  if(ended){app.innerHTML='<div class="card lock"><h1>Übung beendet</h1><p class="sub">Die Daten wurden von diesem Gerät gelöscht. Danke fürs Mitmachen!</p></div>';return}
+  if(ended){screen('<div class="card lock"><h1>Übung beendet</h1><p class="sub">Die Daten wurden von diesem Gerät gelöscht. Danke fürs Mitmachen!</p></div>');return}
   if(code.length!==5||(role==="sup"&&!uname)){
     const kid=tab==="kid";
-    app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub" style="margin:4px 0 12px">Nur-Lesen-Ansicht. Die PIN bekommst du von der Einsatzleitung.</p>'+
+    screen('<div class="card"><h1>Hydranten-Übung</h1><p class="sub" style="margin:4px 0 12px">Nur-Lesen-Ansicht. Die PIN bekommst du von der Einsatzleitung.</p>'+
       '<div class="seg" style="margin-bottom:12px"><button data-t="sup" class="'+(kid?"":"on")+'">Betreuer</button><button data-t="kid" class="'+(kid?"on":"")+'">Kinder</button></div>'+
       (loginErr?'<p class="err">'+esc(loginErr)+'</p>':'')+
       '<div style="display:flex;flex-direction:column;gap:8px">'+(kid?'':'<input id="n" placeholder="Name" autocomplete="name" value="'+esc(uname)+'">')+
-      '<input id="c" inputmode="numeric" maxlength="5" placeholder="PIN (5 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>';
-    app.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{tab=b.dataset.t;loginErr="";render()});
-    document.getElementById("go").onclick=()=>{
-      const n=kid?"-":document.getElementById("n").value.trim(),p=document.getElementById("c").value.trim();
-      if(!n||!/^\d{5}$/.test(p)){loginErr=kid?"Bitte die 5-stellige PIN eingeben.":"Bitte Name und 5-stellige PIN eingeben.";render();return}
-      role=tab;uname=kid?"":n;code=p;loginErr="";LS.set("role",role);LS.set("name",uname);LS.set("pin",p);connect()};
+      '<input id="c" inputmode="numeric" maxlength="5" placeholder="PIN (5 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>');
     return;
   }
-  let h='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'</div>';
+  const head='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'</div>';
   if(!D){
-    app.innerHTML=h+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kommt nichts: PIN prüfen und ob dort der Cloud-Abgleich an ist.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>';
-    document.getElementById("rf").onclick=()=>{hello();connect()};document.getElementById("lo").onclick=()=>logout(true);return;
+    screen(head+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kommt nichts: PIN prüfen und ob dort der Cloud-Abgleich an ist.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>');
+    return;
   }
   const gs=D.groups||[];
-  h+='<div class="card"><div class="row" style="margin-bottom:8px"><span style="flex:1">'+(role==="kid"?"<b>Kinder-Ansicht</b>":"Angemeldet: <b>"+esc(uname)+"</b>")+'</span><button id="rf" title="Neu laden">↻</button><button id="lo">Abmelden</button></div>';
+  let h=head+'<div class="card"><div class="row" style="margin-bottom:8px"><span style="flex:1">'+(role==="kid"?"<b>Kinder-Ansicht</b>":"Angemeldet: <b>"+esc(uname)+"</b>")+'</span><button id="rf" title="Neu laden">↻</button><button id="lo">Abmelden</button></div>';
   if(role==="kid"){
     if(!gs.some(g=>String(g.id)===kidGroup))kidGroup=String(gs[0]?.id??"");
     h+='<div class="sub" style="margin-bottom:6px">Wir sind:</div><div class="row">'+gs.map(g=>'<button class="chip'+(String(g.id)===kidGroup?" on":"")+'" data-g="'+g.id+'">'+esc(g.name)+'</button>').join("")+'</div>';
   }else{
     h+='<div class="row">'+[["mine","Meine Gruppe"],...gs.map(g=>[String(g.id),g.name]),["all","Alle"]].map(([k,t])=>'<button class="chip'+(view===k?" on":"")+'" data-v="'+k+'">'+esc(t)+'</button>').join("")+'</div>';
   }
-  h+='</div><div id="mapslot"></div><div class="row"><button id="loc" class="chip">📍 Mein Standort</button></div>'+legend();
+  h+='</div>';
+  put("top",h);showMap(true);
+  put("mid",'<div class="row" style="margin-bottom:12px"><button id="loc" class="chip">📍 Mein Standort</button></div>'+legend());
+  let b='';
   if(role==="sup"){
     for(const g of shownGroups()){
       const idx=gs.indexOf(g),done=g.stepTimes||[],fin=done.length>=5,hy=(D.hydrants||[]).find(x=>x.id===g.route[g.routeIndex]);
-      h+='<div class="card"><h2><span class="dot" style="background:'+COLORS[idx%4]+'"></span>'+esc(g.name)+'</h2>';
-      if(!g.route.length)h+='<div class="sub">Noch kein Hydrant zugeteilt.</div>';
+      b+='<div class="card" style="margin-bottom:12px"><h2><span class="dot" style="background:'+COLORS[idx%4]+'"></span>'+esc(g.name)+'</h2>';
+      if(!g.route.length)b+='<div class="sub">Noch kein Hydrant zugeteilt.</div>';
       else{
-        h+='<div class="sub">Hydrant '+Math.min(g.routeIndex+1,g.route.length)+' von '+g.route.length+'</div>';
-        if(hy)h+='<div class="big">'+esc(hy.street||"Hydrant")+'</div><div class="sub">'+esc([hy.description,hy.landmark&&("Punkt: "+hy.landmark)].filter(Boolean).join(" · "))+'</div>';
-        if(!g.startedAt)h+='<div class="sub" style="margin-top:6px">Noch nicht gestartet.</div>';
+        b+='<div class="sub">Hydrant '+Math.min(g.routeIndex+1,g.route.length)+' von '+g.route.length+'</div>';
+        if(hy)b+='<div class="big">'+esc(hy.street||"Hydrant")+'</div><div class="sub">'+esc([hy.description,hy.landmark&&("Punkt: "+hy.landmark)].filter(Boolean).join(" · "))+'</div>';
+        if(!g.startedAt)b+='<div class="sub" style="margin-top:6px">Noch nicht gestartet.</div>';
         else{
-          h+='<div style="margin-top:8px">'+STEPS.map((s,i)=>'<div class="step'+(i<done.length?" done":"")+'"><span>'+(i<done.length?"✓":(i===done.length?"▶":"○"))+'</span><span>'+esc(s)+(i<done.length?' <span class="sub">'+clock(done[i])+'</span>':"")+'</span></div>').join("")+'</div>';
-          h+='<div class="sub" style="margin-top:6px">'+(fin?"Fertig in "+fmt(done[4]-g.startedAt):"Läuft seit "+fmt(Date.now()-g.startedAt))+'</div>';
+          b+='<div style="margin-top:8px">'+STEPS.map((s,i)=>'<div class="step'+(i<done.length?" done":"")+'"><span>'+(i<done.length?"✓":(i===done.length?"▶":"○"))+'</span><span>'+esc(s)+(i<done.length?' <span class="sub">'+clock(done[i])+'</span>':"")+'</span></div>').join("")+'</div>';
+          b+='<div class="sub" style="margin-top:6px">'+(fin?"Fertig in "+fmt(done[4]-g.startedAt):"Läuft seit "+fmt(Date.now()-g.startedAt))+'</div>';
         }
       }
-      h+='</div>';
+      b+='</div>';
     }
     const ids=new Set(shownGroups().map(g=>g.id)),log=(D.log||[]).filter(l=>ids.has(l.groupId)).slice(-25).reverse();
-    h+='<div class="card log"><h2>Zeitstrahl</h2>'+(log.length?log.map(l=>'<div><span class="sub">'+clock(l.at)+'</span> '+esc(l.text)+'</div>').join(""):'<div class="sub">Noch nichts.</div>')+'</div>';
+    b+='<div class="card log" style="margin-bottom:12px"><h2>Zeitstrahl</h2>'+(log.length?log.map(l=>'<div><span class="sub">'+clock(l.at)+'</span> '+esc(l.text)+'</div>').join(""):'<div class="sub">Noch nichts.</div>')+'</div>';
   }
-  h+='<div class="sub" style="text-align:center;padding-bottom:8px">Nur-Lesen-Ansicht · Karte © OpenStreetMap</div>';
-  ensureMap();app.innerHTML=h;attachMap();
-  document.getElementById("lo").onclick=()=>logout(true);
-  document.getElementById("rf").onclick=()=>hello();
-  document.getElementById("loc").onclick=locate;
-  app.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{view=b.dataset.v;LS.set("view",view);render();drawLayers()});
-  app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>{kidGroup=b.dataset.g;LS.set("kidGroup",kidGroup);render();drawLayers()});
+  b+='<div class="sub" style="text-align:center;padding-bottom:8px">Nur-Lesen-Ansicht · Karte © OpenStreetMap</div>';
+  put("bottom",b);
 }
+// Klicks zentral (die Bereiche werden neu geschrieben, die Karte nie)
+document.addEventListener("click",e=>{
+  const t=e.target.closest("button");if(!t)return;
+  if(t.dataset.t){tab=t.dataset.t;loginErr="";render();return}
+  if(t.dataset.v){view=t.dataset.v;LS.set("view",view);render();drawLayers();return}
+  if(t.dataset.g){kidGroup=t.dataset.g;LS.set("kidGroup",kidGroup);render();drawLayers();return}
+  if(t.id==="lo")logout(true);
+  else if(t.id==="rf"){D?hello():connect()}
+  else if(t.id==="loc")locate();
+  else if(t.id==="go"){
+    const kid=tab==="kid",n=kid?"-":document.getElementById("n").value.trim(),p=document.getElementById("c").value.trim();
+    if(!n||!/^\d{5}$/.test(p)){loginErr=kid?"Bitte die 5-stellige PIN eingeben.":"Bitte Name und 5-stellige PIN eingeben.";render();return}
+    role=tab;uname=kid?"":n;code=p;loginErr="";LS.set("role",role);LS.set("name",uname);LS.set("pin",p);connect();
+  }
+});
 // Nur Texte/Zeiten auffrischen – die Karte bleibt unberührt
-setInterval(()=>{if(D&&!ended){const y=window.scrollY;render();window.scrollTo(0,y)}},5000);
+setInterval(()=>{if(D&&!ended)render()},5000);
 tab=role;render();if(code.length===5)connect();
 </script>
 </body>
