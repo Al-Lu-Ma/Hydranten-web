@@ -57,7 +57,7 @@ const enc=new TextEncoder(),dec=new TextDecoder();
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-let role=LS.get("role")||"sup";            // sup = Betreuer, kid = Kinder
+let role=LS.get("role")||"kid";            // sup = Betreuer, kid = Kinder
 let code=LS.get("pin")||"", uname=LS.get("name")||"", me="", view=LS.get("view")||"mine", kidGroup=LS.get("kidGroup")||"";
 let loginErr="", D=null, client=null, key=null, topic="", brokerIdx=0, connected=false, ended=false, lastData=0, myPos=null, geoId=null, tab=role;
 const myId="w"+Math.random().toString(36).slice(2,9).padEnd(7,"0"), senderId=myId.slice(0,8);
@@ -112,7 +112,7 @@ const norm=s=>String(s||"").trim().toLowerCase().replace(/\s+/g," ");
 function findMe(){const s=(D.supervisors||[]).find(x=>norm(x.name)===norm(uname));if(s){me=String(s.id);return true}return false}
 function logout(clear){
   try{client&&client.end(true)}catch(e){}client=null;connected=false;D=null;
-  if(clear){LS.del("pin");LS.del("name");uname="";loginErr=""}else LS.del("pin");
+  if(clear){LS.del("pin");LS.del("name");uname="";loginErr="";tab="kid"}else LS.del("pin");
   code="";render();
 }
 
