@@ -5,31 +5,41 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Hydranten">
-<title>Hydranten-Übung Betreuer</title>
-<!-- Autor: Alex · Nur-Lesen-Ansicht für Betreuer (iPhone/Browser), gleicher Code wie in der App -->
+<title>Hydranten-Übung</title>
+<!-- Autor: Alex · Nur-Lesen-Ansicht (Betreuer + Kinder), gleiche Verschlüsselung wie die App -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
-:root{--bg:#f2f2f7;--card:#fff;--tx:#111;--sub:#6b6b70;--pr:#0a84ff;--line:#d8d8de}
+:root{--bg:#f2f2f7;--card:#fff;--tx:#111;--sub:#6b6b70;--pr:#0a84ff;--line:#e2e2e8;--ok:#30b050;--bad:#ff3b30}
 @media(prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--tx:#f2f2f7;--sub:#9a9aa0;--line:#38383a}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:16px -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.35 -apple-system,system-ui,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .wrap{max-width:720px;margin:0 auto;padding:12px;display:flex;flex-direction:column;gap:12px}
-.card{background:var(--card);border-radius:16px;padding:14px}
-h1{font-size:22px;margin:4px 0}h2{font-size:17px;margin:0 0 6px}
+.card{background:var(--card);border-radius:18px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+h1{font-size:22px;margin:0}h2{font-size:17px;margin:0 0 6px}
 .sub{color:var(--sub);font-size:14px}
-input,button,select{font:inherit;border-radius:12px;border:1px solid var(--line);padding:12px;background:var(--card);color:var(--tx)}
-button.pr{background:var(--pr);color:#fff;border:0;font-weight:600}
+input,button{font:inherit;border-radius:12px;border:1px solid var(--line);padding:12px 14px;background:var(--card);color:var(--tx)}
+button{cursor:pointer}button.pr{background:var(--pr);color:#fff;border:0;font-weight:600}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.chip{padding:8px 14px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--tx)}
+.chip{padding:8px 14px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--tx);font-size:15px}
 .chip.on{background:var(--pr);color:#fff;border-color:var(--pr)}
-#map{height:46vh;min-height:260px;border-radius:16px}
-.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px}
+.seg{display:flex;background:var(--bg);border-radius:12px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;border-radius:10px;padding:10px}
+.seg button.on{background:var(--card);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}
+.led{width:9px;height:9px;border-radius:50%;background:var(--sub)}.led.on{background:var(--ok);box-shadow:0 0 0 3px rgba(48,176,80,.25)}
+#mapslot,#map{height:50vh;min-height:280px;border-radius:18px;overflow:hidden}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px}
 .step{display:flex;gap:8px;padding:3px 0}.step.done{color:var(--sub)}
 .big{font-size:20px;font-weight:700}
-#st{font-size:13px;color:var(--sub)}
-.log div{padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.log div{padding:7px 0;border-top:1px solid var(--line);font-size:14px}
 .lock{text-align:center;padding:40px 16px}
-.blink{animation:bl 1s infinite}@keyframes bl{50%{box-shadow:0 0 0 4px #ff3b30}}
+.leg{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:14px}
+.leg i{display:inline-block;width:14px;height:14px;margin-right:7px;vertical-align:-2px;background:var(--pr)}
+.leg .c{border-radius:50%}.leg .q{border-radius:3px}
+.leg .d{background:none;border-top:3px dashed var(--pr);height:0;width:18px;vertical-align:4px}
+.leg .s{background:none;border-top:3px solid var(--pr);height:0;width:18px;vertical-align:4px}
+summary{cursor:pointer;font-weight:600;list-style:none}summary::-webkit-details-marker{display:none}
+.err{color:var(--bad);margin:0 0 8px}
 </style>
 </head>
 <body>
@@ -41,21 +51,22 @@ button.pr{background:var(--pr);color:#fff;border:0;font-weight:600}
 const STEPS=["Hydrant gefunden · Art gemeldet","Lagemeldung (Punkt in der Nähe)","Geöffnet, gespült, Standrohr gesetzt","Fertig gemeldet","Einsatzbereit gemeldet"];
 const COLORS=["#ff3b30","#0a84ff","#30b050","#ff9f0a"];
 const BROKERS=["wss://broker.hivemq.com:8884/mqtt","wss://broker.emqx.io:8084/mqtt"];
+const BASE=[47.7910448,7.6226959];
 const LS={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const enc=new TextEncoder(),dec=new TextDecoder();
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-let code=LS.get("pin")||"", uname=LS.get("name")||"", me="", view=LS.get("view")||"mine", loginErr="";
-let D=null, status="Nicht verbunden", client=null, key=null, topic="", brokerIdx=0, connected=false, ended=false;
-const myId="w"+Math.random().toString(36).slice(2,9).padEnd(7,"0");
-const senderId=myId.slice(0,8);
+let role=LS.get("role")||"sup";            // sup = Betreuer, kid = Kinder
+let code=LS.get("pin")||"", uname=LS.get("name")||"", me="", view=LS.get("view")||"mine", kidGroup=LS.get("kidGroup")||"";
+let loginErr="", D=null, client=null, key=null, topic="", brokerIdx=0, connected=false, ended=false, lastData=0, myPos=null, geoId=null, tab=role;
+const myId="w"+Math.random().toString(36).slice(2,9).padEnd(7,"0"), senderId=myId.slice(0,8);
 
-// ---------- Krypto (wie in der App: PBKDF2-SHA1 · AES-256-GCM · gzip) ----------
+// ---------- Verschlüsselung (wie in der App: PBKDF2-SHA1 · AES-256-GCM · gzip) ----------
 async function setupKey(c){
   const base=await crypto.subtle.importKey("raw",enc.encode(c),"PBKDF2",false,["deriveKey"]);
   key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:enc.encode("hydranten-uebung-v1"),iterations:20000,hash:"SHA-1"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
-  const h=await crypto.subtle.digest("SHA-256",enc.encode("webtopic|"+c));
+  const h=await crypto.subtle.digest("SHA-256",enc.encode((role==="kid"?"kidstopic|":"webtopic|")+c));
   topic="hydranten-uebung/v1/"+hex(h).slice(0,32);
 }
 async function pipe(data,stream){return new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(stream)).arrayBuffer())}
@@ -73,11 +84,7 @@ async function encrypt(text){
 }
 
 // ---------- Zusammenführen (jüngere Änderung gewinnt) ----------
-function mergeById(a,b,idf){
-  const m=new Map();
-  for(const x of [...a,...b]){const k=idf(x),o=m.get(k);if(!o||(x.updatedAt||0)>(o.updatedAt||0))m.set(k,x)}
-  return [...m.values()];
-}
+function mergeById(a,b,idf){const m=new Map();for(const x of [...a,...b]){const k=idf(x),o=m.get(k);if(!o||(x.updatedAt||0)>(o.updatedAt||0))m.set(k,x)}return [...m.values()]}
 function merge(a,b){
   if(!a)a={hydrants:[],groups:[],supervisors:[],log:[],deleted:[],settingsAt:0,endFlagAt:0,logClearedAt:0};
   const tomb=new Map();for(const [id,at] of [...(a.deleted||[]),...(b.deleted||[])])tomb.set(id,Math.max(at,tomb.get(id)||0));
@@ -85,143 +92,207 @@ function merge(a,b){
   const cleared=Math.max(a.logClearedAt||0,b.logClearedAt||0);
   const logs=new Map();for(const l of [...(a.log||[]),...(b.log||[])])if(l.at>cleared)logs.set(l.id,l);
   const newS=(b.settingsAt||0)>(a.settingsAt||0), newE=(b.endFlagAt||0)>(a.endFlagAt||0);
-  return {
-    ...a,
+  return {...a,
     hydrants:mergeById(a.hydrants||[],b.hydrants||[],x=>x.id).filter(keep),
     supervisors:mergeById(a.supervisors||[],b.supervisors||[],x=>x.id).filter(keep),
     groups:mergeById(a.groups||[],b.groups||[],x=>x.id),
-    log:[...logs.values()].sort((x,y)=>x.at-y.at||x.id-y.id),
-    logClearedAt:cleared,
-    deleted:[...tomb.entries()],
+    log:[...logs.values()].sort((x,y)=>x.at-y.at||x.id-y.id),logClearedAt:cleared,deleted:[...tomb.entries()],
     settingsAt:Math.max(a.settingsAt||0,b.settingsAt||0),
     baseLat:newS?b.baseLat:a.baseLat,baseLon:newS?b.baseLon:a.baseLon,
-    endFlag:newE?b.endFlag:a.endFlag,endFlagAt:Math.max(a.endFlagAt||0,b.endFlagAt||0)
-  };
+    endFlag:newE?b.endFlag:a.endFlag,endFlagAt:Math.max(a.endFlagAt||0,b.endFlagAt||0)};
 }
 function onData(json){
   let b;try{b=JSON.parse(json)}catch(e){return}
-  D=merge(D,b);
-  if(!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau so wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
-  if(D.endFlag){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}}
-  render();
+  D=merge(D,b);lastData=Date.now();
+  if(D.endFlag){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
+  if(role==="sup"&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
+  render();drawLayers();
 }
-
-// ---------- MQTT ----------
-function connect(){
-  if(!code||code.length<4)return render();
-  status="Verbinde …";render();
-  setupKey(code).then(()=>{
-    const url=BROKERS[brokerIdx%BROKERS.length];
-    client=mqtt.connect(url,{clientId:"hu-"+myId+Math.floor(Math.random()*99999),clean:true,reconnectPeriod:5000,connectTimeout:10000,keepalive:30});
-    client.on("connect",async()=>{
-      connected=true;status="Verbunden";render();
-      client.subscribe(topic,{qos:1});
-      // leeren Stand anbieten → die App schickt ihren kompletten Stand zurück
-      const hello=JSON.stringify({v:1,hydrants:[],groups:[],supervisors:[],log:[]});
-      client.publish(topic,await encrypt(hello),{qos:1,retain:false});
-    });
-    client.on("message",async(t,m)=>{try{const j=await decrypt(m);if(j){status="Verbunden · "+new Date().toLocaleTimeString("de-DE");onData(j)}}catch(e){}});
-    client.on("close",()=>{connected=false;status="Verbindung weg – versuche erneut …";render()});
-    client.on("error",()=>{brokerIdx++;status="Kein Netz/Broker – neuer Versuch …";render()});
-  }).catch(()=>{status="Fehler bei der Verschlüsselung";render()});
-}
-
-function norm(s){return String(s||"").trim().toLowerCase().replace(/\s+/g," ")}
+const norm=s=>String(s||"").trim().toLowerCase().replace(/\s+/g," ");
 function findMe(){const s=(D.supervisors||[]).find(x=>norm(x.name)===norm(uname));if(s){me=String(s.id);return true}return false}
 function logout(clear){
   try{client&&client.end(true)}catch(e){}client=null;connected=false;D=null;
-  if(clear){LS.del("pin");LS.del("name");uname="";loginErr=""}else{LS.del("pin")}
+  if(clear){LS.del("pin");LS.del("name");uname="";loginErr=""}else LS.del("pin");
   code="";render();
 }
-// ---------- Anzeige ----------
-const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
-const clock=ms=>new Date(ms).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-let map=null,layer=null,fitted="";
-function myGroupId(){
-  const s=(D?.supervisors||[]).find(x=>String(x.id)===me);
-  return s&&s.role>0?s.role:null;
+
+// ---------- Verbindung ----------
+async function hello(){
+  if(!client||!connected)return;
+  try{client.publish(topic,await encrypt(JSON.stringify({v:1,hydrants:[],groups:[],supervisors:[],log:[]})),{qos:1,retain:false})}catch(e){}
+}
+function connect(){
+  if(code.length!==5)return render();
+  render();
+  setupKey(code).then(()=>{
+    try{client&&client.end(true)}catch(e){}
+    client=mqtt.connect(BROKERS[brokerIdx%BROKERS.length],{clientId:"hu-"+myId+Math.floor(Math.random()*99999),clean:true,reconnectPeriod:4000,connectTimeout:10000,keepalive:30});
+    client.on("connect",()=>{connected=true;client.subscribe(topic,{qos:1});hello();render()});
+    client.on("message",async(t,m)=>{try{const j=await decrypt(m);if(j)onData(j)}catch(e){}});
+    client.on("close",()=>{connected=false;render()});
+    client.on("error",()=>{brokerIdx++;connected=false;render()});
+  }).catch(()=>render());
+}
+// Heartbeat: regelmäßig den aktuellen Stand anfordern; beim Zurückkehren in die Seite sofort
+setInterval(()=>{if(connected&&Date.now()-lastData>20000)hello()},10000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&client){if(!connected)try{client.reconnect()}catch(e){}else hello()}});
+
+// ---------- Karte (bleibt bestehen – wird nie neu gebaut, deshalb kein Flackern) ----------
+let map=null,mapEl=null,layer=null,fitKey="",routeCache=JSON.parse(LS.get("routes")||"{}"),pending=new Set();
+function ensureMap(){
+  if(map)return;
+  mapEl=document.createElement("div");mapEl.id="map";
+  map=L.map(mapEl,{zoomControl:true,tap:true}).setView(BASE,16);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+  layer=L.layerGroup().addTo(map);
+}
+function attachMap(){
+  const slot=document.getElementById("mapslot");if(!slot||!mapEl)return;
+  if(mapEl.parentNode!==slot){slot.replaceWith(mapEl)}else return;
+  setTimeout(()=>map.invalidateSize(),50);
 }
 function shownGroups(){
   const gs=D.groups||[];
+  if(role==="kid")return gs.filter(g=>String(g.id)===kidGroup);
   if(view==="all")return gs;
-  if(view==="mine"){const g=myGroupId();return g?gs.filter(x=>x.id===g):gs}
-  return gs.filter(x=>String(x.id)===view);
+  if(view==="mine"){const s=(D.supervisors||[]).find(x=>String(x.id)===me);return s&&s.role>0?gs.filter(g=>g.id===s.role):gs}
+  return gs.filter(g=>String(g.id)===view);
+}
+function wps(g,base){ // Wegpunkte der ganzen Route inkl. Zwischenpunkte (Via) und Rückweg
+  const pts=[base];
+  for(const id of g.route){
+    const hy=(D.hydrants||[]).find(x=>x.id===id);if(!hy)continue;
+    for(const v of (g.vias||[]))if(v[0]===id)pts.push([v[1],v[2]]);
+    pts.push([hy.lat,hy.lon]);
+  }
+  pts.push(base);return pts;
+}
+function roadRoute(pts){
+  if(pts.length<3||pts.length>90)return null;
+  const k=pts.map(p=>p[1].toFixed(5)+","+p[0].toFixed(5)).join(";");
+  if(routeCache[k])return routeCache[k];
+  if(!pending.has(k)){
+    pending.add(k);
+    fetch("https://routing.openstreetmap.de/routed-foot/route/v1/foot/"+k+"?overview=full&geometries=geojson")
+      .then(r=>r.json()).then(j=>{
+        const c=j&&j.routes&&j.routes[0]&&j.routes[0].geometry&&j.routes[0].geometry.coordinates;
+        if(c){routeCache[k]=c.map(x=>[x[1],x[0]]);const keys=Object.keys(routeCache);while(keys.length>12)delete routeCache[keys.shift()];LS.set("routes",JSON.stringify(routeCache));drawLayers()}
+      }).catch(()=>{}).finally(()=>pending.delete(k));
+  }
+  return null;
+}
+function hydIcon(color,sq,txt,faded){
+  const html='<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:'+color+';color:#fff;font:700 12px sans-serif;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);opacity:'+(faded?.55:1)+';border-radius:'+(sq?"6px":"50%")+'">'+txt+'</div>';
+  return L.divIcon({html,className:"",iconSize:[24,24],iconAnchor:[12,12]});
+}
+function drawLayers(){
+  if(!D||!map)return;
+  layer.clearLayers();
+  const base=(D.baseLat&&D.baseLon)?[D.baseLat,D.baseLon]:BASE,all=[base],gs=D.groups||[];
+  L.marker(base,{icon:L.divIcon({html:'<div style="font-size:22px;filter:drop-shadow(0 1px 2px #000)">🏠</div>',className:"",iconSize:[26,26],iconAnchor:[13,13]})}).addTo(layer).bindPopup("Gerätehaus (Start und Ziel)");
+  for(const g of shownGroups()){
+    const color=COLORS[gs.indexOf(g)%4];
+    if(role==="sup"&&g.route&&g.route.length){
+      const pts=wps(g,base),road=roadRoute(pts);
+      L.polyline(road||pts,{color,weight:4,opacity:.75,dashArray:"7 9"}).addTo(layer);
+      pts.forEach(p=>all.push(p));
+      g.route.forEach((id,i)=>{
+        const hy=(D.hydrants||[]).find(x=>x.id===id);if(!hy)return;
+        const done=i<g.routeIndex||(i===g.routeIndex&&(g.stepTimes||[]).length>=5);
+        L.marker([hy.lat,hy.lon],{icon:hydIcon(color,hy.type==="UNTERFLUR",done?"✓":(i+1),done)}).addTo(layer)
+          .bindPopup("<b>"+esc(hy.street||"Hydrant")+"</b><br>"+esc(hy.type==="UEBERFLUR"?"Überflur":hy.type==="UNTERFLUR"?"Unterflur":"Art unbekannt")+(hy.landmark?"<br>Punkt: "+esc(hy.landmark):""));
+      });
+    }
+    const tr=(g.track||[]).map(p=>[p[0],p[1]]);
+    if(tr.length){
+      L.polyline(tr,{color,weight:5}).addTo(layer);const l=tr[tr.length-1];all.push(l);
+      L.marker(l,{icon:L.divIcon({html:'<div style="width:20px;height:20px;background:'+color+';border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6);transform:rotate(45deg)"></div>',className:"",iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:500}).addTo(layer).bindPopup(esc(g.name)+" – letzter Standort");
+    }
+  }
+  if(myPos){all.push(myPos);L.circleMarker(myPos,{radius:8,color:"#fff",weight:3,fillColor:"#0a84ff",fillOpacity:1}).addTo(layer)}
+  const key2=role+view+kidGroup+(D.groups||[]).length;
+  if(fitKey!==key2&&all.length>1){fitKey=key2;map.fitBounds(all,{padding:[28,28],maxZoom:18})}
+}
+function locate(){
+  if(!navigator.geolocation){alert("Standort wird von diesem Browser nicht unterstützt.");return}
+  if(geoId!==null)return;
+  geoId=navigator.geolocation.watchPosition(p=>{myPos=[p.coords.latitude,p.coords.longitude];drawLayers();if(map)map.panTo(myPos)},
+    ()=>{geoId=null;alert("Standort nicht erlaubt. Bitte in den Browser-Einstellungen freigeben.")},{enableHighAccuracy:true});
+}
+
+// ---------- Anzeige ----------
+const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
+const clock=ms=>new Date(ms).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+function status(){return '<span class="pill"><span class="led'+(connected&&lastData?" on":"")+'"></span>'+(connected?(lastData?"Live · "+clock(lastData):"Warte auf Daten …"):"Verbinde …")+'</span>'}
+function legend(){
+  if(role==="kid")return '<details class="card" open><summary>Legende</summary><div class="leg" style="margin-top:10px"><span>🏠 Gerätehaus</span><span><i style="background:#0a84ff;transform:rotate(45deg)"></i>Eure Gruppe (zuletzt gesehen)</span><span><i class="s"></i>Euer Weg</span><span><i class="c"></i>Du (mit „Mein Standort“)</span></div></details>';
+  return '<details class="card" open><summary>Legende</summary><div class="leg" style="margin-top:10px">'+
+    '<span><i class="c"></i>Kreis = Überflur</span><span><i class="q"></i>Quadrat = Unterflur</span>'+
+    '<span><i class="c" style="background:'+COLORS[0]+'"></i><i class="c" style="background:'+COLORS[1]+'"></i>Farbe = Gruppe</span><span>✓ = erledigt · Zahl = Reihenfolge</span>'+
+    '<span><i class="d"></i>geplante Route</span><span><i class="s"></i>gelaufener Weg</span>'+
+    '<span>🏠 Gerätehaus</span><span><i style="transform:rotate(45deg)"></i>letzter Standort</span></div></details>';
 }
 function render(){
   const app=document.getElementById("app");
   if(ended){app.innerHTML='<div class="card lock"><h1>Übung beendet</h1><p class="sub">Die Daten wurden von diesem Gerät gelöscht. Danke fürs Mitmachen!</p></div>';return}
-  if(!code||code.length!==5||!uname){
-    app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub">Betreuer-Ansicht (nur lesen). Melde dich mit deinem Namen und der 5-stelligen PIN von der Einsatzleitung an.</p>'+(loginErr?'<p style="color:#ff3b30">'+esc(loginErr)+'</p>':'')+'<div style="display:flex;flex-direction:column;gap:8px"><input id="n" placeholder="Name" autocomplete="name" value="'+esc(uname)+'"><input id="c" inputmode="numeric" maxlength="5" placeholder="PIN (5 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>';
-    document.getElementById("go").onclick=()=>{const n=document.getElementById("n").value.trim(),p=document.getElementById("c").value.trim();if(!n||!/^\d{5}$/.test(p)){loginErr="Bitte Name und 5-stellige PIN eingeben.";render();return}
-      uname=n;code=p;loginErr="";LS.set("name",n);LS.set("pin",p);connect()};
+  if(code.length!==5||(role==="sup"&&!uname)){
+    const kid=tab==="kid";
+    app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub" style="margin:4px 0 12px">Nur-Lesen-Ansicht. Die PIN bekommst du von der Einsatzleitung.</p>'+
+      '<div class="seg" style="margin-bottom:12px"><button data-t="sup" class="'+(kid?"":"on")+'">Betreuer</button><button data-t="kid" class="'+(kid?"on":"")+'">Kinder</button></div>'+
+      (loginErr?'<p class="err">'+esc(loginErr)+'</p>':'')+
+      '<div style="display:flex;flex-direction:column;gap:8px">'+(kid?'':'<input id="n" placeholder="Name" autocomplete="name" value="'+esc(uname)+'">')+
+      '<input id="c" inputmode="numeric" maxlength="5" placeholder="PIN (5 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>';
+    app.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{tab=b.dataset.t;loginErr="";render()});
+    document.getElementById("go").onclick=()=>{
+      const n=kid?"-":document.getElementById("n").value.trim(),p=document.getElementById("c").value.trim();
+      if(!n||!/^\d{5}$/.test(p)){loginErr=kid?"Bitte die 5-stellige PIN eingeben.":"Bitte Name und 5-stellige PIN eingeben.";render();return}
+      role=tab;uname=kid?"":n;code=p;loginErr="";LS.set("role",role);LS.set("name",uname);LS.set("pin",p);connect()};
     return;
   }
-  if(!D){app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub">'+esc(status)+'</p><p class="sub">Warte auf Daten der Einsatzleitung … Kommt nichts, prüfe die PIN und ob dort der Cloud-Abgleich an ist.</p><button id="x">Abmelden</button></div>';document.getElementById("x").onclick=()=>logout(true);return}
-  const sup=(D.supervisors||[]);
+  let h='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'</div>';
+  if(!D){
+    app.innerHTML=h+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kommt nichts: PIN prüfen und ob dort der Cloud-Abgleich an ist.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>';
+    document.getElementById("rf").onclick=()=>{hello();connect()};document.getElementById("lo").onclick=()=>logout(true);return;
+  }
   const gs=D.groups||[];
-  const shown=shownGroups();
-  let h='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1><span id="st">'+esc(status)+'</span></div>';
-  h+='<div class="card"><div class="row"><span style="flex:1">Angemeldet: <b>'+esc(uname)+'</b></span><button id="lo">Abmelden</button></div>';
-  h+='<div class="row" style="margin-top:8px">'+[["mine","Meine Gruppe"],...gs.map(g=>[String(g.id),g.name]),["all","Alle"]].map(([k,t])=>'<button class="chip'+(view===k?" on":"")+'" data-v="'+k+'">'+esc(t)+'</button>').join("")+'</div></div>';
-  h+='<div id="map"></div>';
-  for(const g of shown){
-    const idx=gs.indexOf(g),done=g.stepTimes||[],fin=done.length>=5;
-    const hy=(D.hydrants||[]).find(x=>x.id===g.route[g.routeIndex]);
-    const next=g.startedAt&&!fin?STEPS[done.length]:null;
-    h+='<div class="card"><h2><span class="dot" style="background:'+COLORS[idx%4]+'"></span>'+esc(g.name)+'</h2>';
-    if(!g.route.length)h+='<div class="sub">Noch kein Hydrant zugeteilt.</div>';
-    else{
-      h+='<div class="sub">Hydrant '+Math.min(g.routeIndex+1,g.route.length)+' von '+g.route.length+'</div>';
-      if(hy)h+='<div class="big">'+esc(hy.street||"Hydrant")+'</div><div class="sub">'+esc([hy.description,hy.landmark&&("Punkt: "+hy.landmark)].filter(Boolean).join(" · "))+'</div>';
-      if(!g.startedAt)h+='<div class="sub" style="margin-top:6px">Noch nicht gestartet.</div>';
+  h+='<div class="card"><div class="row" style="margin-bottom:8px"><span style="flex:1">'+(role==="kid"?"<b>Kinder-Ansicht</b>":"Angemeldet: <b>"+esc(uname)+"</b>")+'</span><button id="rf" title="Neu laden">↻</button><button id="lo">Abmelden</button></div>';
+  if(role==="kid"){
+    if(!gs.some(g=>String(g.id)===kidGroup))kidGroup=String(gs[0]?.id??"");
+    h+='<div class="sub" style="margin-bottom:6px">Wir sind:</div><div class="row">'+gs.map(g=>'<button class="chip'+(String(g.id)===kidGroup?" on":"")+'" data-g="'+g.id+'">'+esc(g.name)+'</button>').join("")+'</div>';
+  }else{
+    h+='<div class="row">'+[["mine","Meine Gruppe"],...gs.map(g=>[String(g.id),g.name]),["all","Alle"]].map(([k,t])=>'<button class="chip'+(view===k?" on":"")+'" data-v="'+k+'">'+esc(t)+'</button>').join("")+'</div>';
+  }
+  h+='</div><div id="mapslot"></div><div class="row"><button id="loc" class="chip">📍 Mein Standort</button></div>'+legend();
+  if(role==="sup"){
+    for(const g of shownGroups()){
+      const idx=gs.indexOf(g),done=g.stepTimes||[],fin=done.length>=5,hy=(D.hydrants||[]).find(x=>x.id===g.route[g.routeIndex]);
+      h+='<div class="card"><h2><span class="dot" style="background:'+COLORS[idx%4]+'"></span>'+esc(g.name)+'</h2>';
+      if(!g.route.length)h+='<div class="sub">Noch kein Hydrant zugeteilt.</div>';
       else{
-        h+='<div style="margin-top:8px">'+STEPS.map((s,i)=>'<div class="step'+(i<done.length?" done":"")+'"><span>'+(i<done.length?"✓":(i===done.length?"▶":"○"))+'</span><span>'+esc(s)+(i<done.length?' <span class="sub">'+clock(done[i])+'</span>':"")+'</span></div>').join("")+'</div>';
-        h+='<div class="sub" style="margin-top:6px">'+(fin?"Fertig in "+fmt(done[4]-g.startedAt):"Läuft seit "+fmt(Date.now()-g.startedAt))+'</div>';
+        h+='<div class="sub">Hydrant '+Math.min(g.routeIndex+1,g.route.length)+' von '+g.route.length+'</div>';
+        if(hy)h+='<div class="big">'+esc(hy.street||"Hydrant")+'</div><div class="sub">'+esc([hy.description,hy.landmark&&("Punkt: "+hy.landmark)].filter(Boolean).join(" · "))+'</div>';
+        if(!g.startedAt)h+='<div class="sub" style="margin-top:6px">Noch nicht gestartet.</div>';
+        else{
+          h+='<div style="margin-top:8px">'+STEPS.map((s,i)=>'<div class="step'+(i<done.length?" done":"")+'"><span>'+(i<done.length?"✓":(i===done.length?"▶":"○"))+'</span><span>'+esc(s)+(i<done.length?' <span class="sub">'+clock(done[i])+'</span>':"")+'</span></div>').join("")+'</div>';
+          h+='<div class="sub" style="margin-top:6px">'+(fin?"Fertig in "+fmt(done[4]-g.startedAt):"Läuft seit "+fmt(Date.now()-g.startedAt))+'</div>';
+        }
       }
-      if(g.nextQueryAt&&!fin){const d=g.nextQueryAt-Date.now();h+='<div class="sub">Nächste Abfrage '+(d>0?"in "+fmt(d):"fällig")+'</div>'}
+      h+='</div>';
     }
-    h+='</div>';
+    const ids=new Set(shownGroups().map(g=>g.id)),log=(D.log||[]).filter(l=>ids.has(l.groupId)).slice(-25).reverse();
+    h+='<div class="card log"><h2>Zeitstrahl</h2>'+(log.length?log.map(l=>'<div><span class="sub">'+clock(l.at)+'</span> '+esc(l.text)+'</div>').join(""):'<div class="sub">Noch nichts.</div>')+'</div>';
   }
-  const ids=new Set(shown.map(g=>g.id));
-  const log=(D.log||[]).filter(l=>ids.has(l.groupId)).slice(-25).reverse();
-  h+='<div class="card log"><h2>Zeitstrahl</h2>'+(log.length?log.map(l=>'<div><span class="sub">'+clock(l.at)+'</span> '+esc(l.text)+'</div>').join(""):'<div class="sub">Noch nichts.</div>')+'</div>';
-  h+='<div class="sub" style="text-align:center">Nur-Lesen-Ansicht · Standort-Daten der Einsatzleitung</div>';
-  app.innerHTML=h;
+  h+='<div class="sub" style="text-align:center;padding-bottom:8px">Nur-Lesen-Ansicht · Karte © OpenStreetMap</div>';
+  ensureMap();app.innerHTML=h;attachMap();
   document.getElementById("lo").onclick=()=>logout(true);
-  app.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{view=b.dataset.v;LS.set("view",view);fitted="";render()});
-  drawMap(shown,gs);
+  document.getElementById("rf").onclick=()=>hello();
+  document.getElementById("loc").onclick=locate;
+  app.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{view=b.dataset.v;LS.set("view",view);render();drawLayers()});
+  app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>{kidGroup=b.dataset.g;LS.set("kidGroup",kidGroup);render();drawLayers()});
 }
-function mark(h,color){
-  const sq=h.type==="UNTERFLUR";
-  const html='<div style="width:18px;height:18px;background:'+color+';border:2px solid #fff;box-shadow:0 0 3px #000;border-radius:'+(sq?"3px":"50%")+'"></div>';
-  return L.marker([h.lat,h.lon],{icon:L.divIcon({html,className:"",iconSize:[18,18],iconAnchor:[9,9]})}).bindPopup(esc(h.street||"Hydrant")+(h.landmark?"<br>Punkt: "+esc(h.landmark):""));
-}
-function drawMap(shown,gs){
-  const el=document.getElementById("map");if(!el)return;
-  if(map){map.remove();map=null}
-  map=L.map(el,{zoomControl:true}).setView([D.baseLat||47.7910448,D.baseLon||7.6226959],16);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
-  const base=[D.baseLat||47.7910448,D.baseLon||7.6226959],all=[base];
-  L.marker(base,{icon:L.divIcon({html:"🏠",className:"",iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
-  for(const g of shown){
-    const color=COLORS[gs.indexOf(g)%4],pts=[base];
-    g.route.forEach((id,i)=>{const hy=(D.hydrants||[]).find(x=>x.id===id);if(!hy)return;pts.push([hy.lat,hy.lon]);all.push([hy.lat,hy.lon]);
-      const m=mark(hy,color).addTo(map);if(i<g.routeIndex)m.setOpacity(.45)});
-    pts.push(base);
-    L.polyline(pts,{color,weight:3,dashArray:"6 8",opacity:.7}).addTo(map);
-    const tr=(g.track||[]).map(p=>[p[0],p[1]]);
-    if(tr.length){L.polyline(tr,{color,weight:4}).addTo(map);const l=tr[tr.length-1];all.push(l);
-      L.circleMarker(l,{radius:9,color:"#fff",weight:3,fillColor:color,fillOpacity:1}).addTo(map).bindPopup(esc(g.name)+" – letzter Standort")}
-  }
-  if(all.length>1)map.fitBounds(all,{padding:[24,24],maxZoom:18});
-}
-setInterval(()=>{if(D&&!ended)softTick()},5000);
-function softTick(){ /* nur Zeiten auffrischen, ohne Karte neu zu bauen */
-  if(!D)return;
-  const y=window.scrollY;const m=map&&map.getCenter(),z=map&&map.getZoom();
-  render();if(m&&map)map.setView(m,z,{animate:false});window.scrollTo(0,y);
-}
-render();if(code.length>=4)connect();
+// Nur Texte/Zeiten auffrischen – die Karte bleibt unberührt
+setInterval(()=>{if(D&&!ended){const y=window.scrollY;render();window.scrollTo(0,y)}},5000);
+tab=role;render();if(code.length===5)connect();
 </script>
 </body>
 </html>
