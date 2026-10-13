@@ -40,10 +40,18 @@ button{cursor:pointer}button.pr{background:var(--pr);color:#fff;border:0;font-we
 .leg .s{background:none;border-top:3px solid var(--pr);height:0;width:18px;vertical-align:4px}
 summary{cursor:pointer;font-weight:600;list-style:none}summary::-webkit-details-marker{display:none}
 .err{color:var(--bad);margin:0 0 8px}
+#msg{position:fixed;inset:0;z-index:2000;display:none}
+#msg.show{display:block}
+#msg .ban{position:absolute;top:calc(env(safe-area-inset-top) + 10px);left:12px;right:12px;max-width:600px;margin:0 auto;background:var(--pr);color:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#msg .pop{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:24px}
+#msg .pop>div{background:var(--card);border-radius:20px;padding:20px;max-width:420px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+#msg .full{position:absolute;inset:0;background:var(--pr);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px;text-align:center}
+#msg .full .t{font-size:32px;font-weight:800;line-height:1.2}
+#msg .small{font-size:13px;opacity:.85}
 </style>
 </head>
 <body>
-<div class="wrap"><div id="top"></div><div id="mapbox" style="display:none"></div><div id="mid"></div><div id="bottom"></div></div>
+<div id="msg"></div><div class="wrap"><div id="top"></div><div id="mapbox" style="display:none"></div><div id="mid"></div><div id="bottom"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
@@ -96,6 +104,7 @@ function merge(a,b){
     hydrants:mergeById(a.hydrants||[],b.hydrants||[],x=>x.id).filter(keep),
     supervisors:mergeById(a.supervisors||[],b.supervisors||[],x=>x.id).filter(keep),
     groups:mergeById(a.groups||[],b.groups||[],x=>x.id),
+    messages:[...new Map([...(a.messages||[]),...(b.messages||[])].map(m=>[m.id,m])).values()].sort((x,y)=>x.id-y.id).slice(-60),
     log:[...logs.values()].sort((x,y)=>x.at-y.at||x.id-y.id),logClearedAt:cleared,deleted:[...tomb.entries()],
     settingsAt:Math.max(a.settingsAt||0,b.settingsAt||0),
     baseLat:newS?b.baseLat:a.baseLat,baseLon:newS?b.baseLon:a.baseLon,
@@ -106,7 +115,7 @@ function onData(json){
   D=merge(D,b);lastData=Date.now();
   if(D.endFlag){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
   if(role==="sup"&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
-  render();drawLayers();
+  render();drawLayers();checkMsgs();
 }
 const norm=s=>String(s||"").trim().toLowerCase().replace(/\s+/g," ");
 function findMe(){const s=(D.supervisors||[]).find(x=>norm(x.name)===norm(uname));if(s){me=String(s.id);return true}return false}
@@ -225,6 +234,32 @@ function locate(){
     ()=>{geoId=null;alert("Standort nicht erlaubt. Bitte in den Browser-Einstellungen freigeben.")},{enableHighAccuracy:true});
 }
 
+// ---------- Durchsagen (klein / Popup / Vollbild) ----------
+let seenMsgs=new Set(JSON.parse(LS.get("seenMsgs")||"[]")),shownMsg=null,msgTimer=null;
+function forMe(m){
+  if(role==="kid")return !!(m.toAll||m.toKids||(m.toGroups||[]).includes(Number(kidGroup)));
+  const s=(D.supervisors||[]).find(x=>String(x.id)===me);if(!s)return false;
+  return !!(m.toAll||(m.toPeople||[]).map(String).includes(me)||(s.role>0&&(m.toGroups||[]).includes(s.role))||(s.role===0&&m.toLeader));
+}
+function closeMsg(){
+  if(shownMsg){seenMsgs.add(shownMsg.id);LS.set("seenMsgs",JSON.stringify([...seenMsgs].slice(-100)))}
+  shownMsg=null;clearTimeout(msgTimer);document.getElementById("msg").className="";document.getElementById("msg").innerHTML="";
+  setTimeout(checkMsgs,300);
+}
+function checkMsgs(){
+  if(shownMsg||!D)return;
+  const m=(D.messages||[]).filter(x=>!seenMsgs.has(x.id)&&Date.now()-x.id<30*60000&&forMe(x)).sort((a,b)=>a.id-b.id)[0];
+  if(!m)return;
+  shownMsg=m;const el=document.getElementById("msg");
+  const from=esc(m.from||"Einsatzleitung"),txt=esc(m.text);
+  el.innerHTML=m.style===0?'<div class="ban" data-close="1"><div class="small">'+from+'</div><b>'+txt+'</b></div>'
+    :m.style===1?'<div class="pop"><div><div class="sub">Nachricht von '+from+'</div><p style="font-size:20px;margin:10px 0 16px">'+txt+'</p><button class="pr" style="width:100%" data-close="1">OK</button></div></div>'
+    :'<div class="full"><div class="small">Nachricht von '+from+'</div><div class="t">'+txt+'</div><button data-close="1" style="font-size:18px;padding:14px 28px">Verstanden</button></div>';
+  el.className="show";
+  try{navigator.vibrate&&navigator.vibrate([300,150,300])}catch(e){}
+  if(m.style===0)msgTimer=setTimeout(closeMsg,10000);
+}
+document.getElementById("msg").addEventListener("click",e=>{if(e.target.closest("[data-close]"))closeMsg()});
 // ---------- Anzeige ----------
 const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
 const clock=ms=>new Date(ms).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
