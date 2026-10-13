@@ -46,7 +46,7 @@ const enc=new TextEncoder(),dec=new TextDecoder();
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-let code=LS.get("code")||"", me=LS.get("me")||"", view=LS.get("view")||"mine";
+let code=LS.get("pin")||"", uname=LS.get("name")||"", me="", view=LS.get("view")||"mine", loginErr="";
 let D=null, status="Nicht verbunden", client=null, key=null, topic="", brokerIdx=0, connected=false, ended=false;
 const myId="w"+Math.random().toString(36).slice(2,9).padEnd(7,"0");
 const senderId=myId.slice(0,8);
@@ -55,7 +55,7 @@ const senderId=myId.slice(0,8);
 async function setupKey(c){
   const base=await crypto.subtle.importKey("raw",enc.encode(c),"PBKDF2",false,["deriveKey"]);
   key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:enc.encode("hydranten-uebung-v1"),iterations:20000,hash:"SHA-1"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
-  const h=await crypto.subtle.digest("SHA-256",enc.encode("topic|"+c));
+  const h=await crypto.subtle.digest("SHA-256",enc.encode("webtopic|"+c));
   topic="hydranten-uebung/v1/"+hex(h).slice(0,32);
 }
 async function pipe(data,stream){return new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(stream)).arrayBuffer())}
@@ -101,7 +101,8 @@ function merge(a,b){
 function onData(json){
   let b;try{b=JSON.parse(json)}catch(e){return}
   D=merge(D,b);
-  if(D.endFlag){ended=true;D=null;LS.del("code");try{client&&client.end(true)}catch(e){}}
+  if(!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau so wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
+  if(D.endFlag){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}}
   render();
 }
 
@@ -125,6 +126,13 @@ function connect(){
   }).catch(()=>{status="Fehler bei der Verschlüsselung";render()});
 }
 
+function norm(s){return String(s||"").trim().toLowerCase().replace(/\s+/g," ")}
+function findMe(){const s=(D.supervisors||[]).find(x=>norm(x.name)===norm(uname));if(s){me=String(s.id);return true}return false}
+function logout(clear){
+  try{client&&client.end(true)}catch(e){}client=null;connected=false;D=null;
+  if(clear){LS.del("pin");LS.del("name");uname="";loginErr=""}else{LS.del("pin")}
+  code="";render();
+}
 // ---------- Anzeige ----------
 const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
 const clock=ms=>new Date(ms).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
@@ -142,17 +150,18 @@ function shownGroups(){
 function render(){
   const app=document.getElementById("app");
   if(ended){app.innerHTML='<div class="card lock"><h1>Übung beendet</h1><p class="sub">Die Daten wurden von diesem Gerät gelöscht. Danke fürs Mitmachen!</p></div>';return}
-  if(!code||code.length<4){
-    app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub">Betreuer-Ansicht (nur lesen). Gib den Code der Einsatzleitung ein.</p><div class="row"><input id="c" inputmode="numeric" placeholder="Code" style="flex:1"><button class="pr" id="go">Verbinden</button></div></div>';
-    document.getElementById("go").onclick=()=>{code=document.getElementById("c").value.trim();if(code.length>=4){LS.set("code",code);connect()}};
+  if(!code||code.length!==5||!uname){
+    app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub">Betreuer-Ansicht (nur lesen). Melde dich mit deinem Namen und der 5-stelligen PIN von der Einsatzleitung an.</p>'+(loginErr?'<p style="color:#ff3b30">'+esc(loginErr)+'</p>':'')+'<div style="display:flex;flex-direction:column;gap:8px"><input id="n" placeholder="Name" autocomplete="name" value="'+esc(uname)+'"><input id="c" inputmode="numeric" maxlength="5" placeholder="PIN (5 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>';
+    document.getElementById("go").onclick=()=>{const n=document.getElementById("n").value.trim(),p=document.getElementById("c").value.trim();if(!n||!/^\d{5}$/.test(p)){loginErr="Bitte Name und 5-stellige PIN eingeben.";render();return}
+      uname=n;code=p;loginErr="";LS.set("name",n);LS.set("pin",p);connect()};
     return;
   }
-  if(!D){app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub">'+esc(status)+'</p><p class="sub">Warte auf Daten der Einsatzleitung … (die App muss den Cloud-Abgleich an haben)</p><button id="x">Anderer Code</button></div>';document.getElementById("x").onclick=()=>{LS.del("code");try{client&&client.end(true)}catch(e){}code="";render()};return}
+  if(!D){app.innerHTML='<div class="card"><h1>Hydranten-Übung</h1><p class="sub">'+esc(status)+'</p><p class="sub">Warte auf Daten der Einsatzleitung … Kommt nichts, prüfe die PIN und ob dort der Cloud-Abgleich an ist.</p><button id="x">Abmelden</button></div>';document.getElementById("x").onclick=()=>logout(true);return}
   const sup=(D.supervisors||[]);
   const gs=D.groups||[];
   const shown=shownGroups();
   let h='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1><span id="st">'+esc(status)+'</span></div>';
-  h+='<div class="card"><div class="sub" style="margin-bottom:6px">Wer bist du?</div><select id="me" style="width:100%"><option value="">– wählen –</option>'+sup.map(s=>'<option value="'+s.id+'"'+(String(s.id)===me?" selected":"")+'>'+esc(s.name)+'</option>').join("")+'</select>';
+  h+='<div class="card"><div class="row"><span style="flex:1">Angemeldet: <b>'+esc(uname)+'</b></span><button id="lo">Abmelden</button></div>';
   h+='<div class="row" style="margin-top:8px">'+[["mine","Meine Gruppe"],...gs.map(g=>[String(g.id),g.name]),["all","Alle"]].map(([k,t])=>'<button class="chip'+(view===k?" on":"")+'" data-v="'+k+'">'+esc(t)+'</button>').join("")+'</div></div>';
   h+='<div id="map"></div>';
   for(const g of shown){
@@ -178,7 +187,7 @@ function render(){
   h+='<div class="card log"><h2>Zeitstrahl</h2>'+(log.length?log.map(l=>'<div><span class="sub">'+clock(l.at)+'</span> '+esc(l.text)+'</div>').join(""):'<div class="sub">Noch nichts.</div>')+'</div>';
   h+='<div class="sub" style="text-align:center">Nur-Lesen-Ansicht · Standort-Daten der Einsatzleitung</div>';
   app.innerHTML=h;
-  document.getElementById("me").onchange=e=>{me=e.target.value;LS.set("me",me);render()};
+  document.getElementById("lo").onclick=()=>logout(true);
   app.querySelectorAll("[data-v]").forEach(b=>b.onclick=()=>{view=b.dataset.v;LS.set("view",view);fitted="";render()});
   drawMap(shown,gs);
 }
@@ -208,7 +217,7 @@ function drawMap(shown,gs){
 }
 setInterval(()=>{if(D&&!ended)softTick()},5000);
 function softTick(){ /* nur Zeiten auffrischen, ohne Karte neu zu bauen */
-  if(!D)return;const sel=document.activeElement;if(sel&&sel.tagName==="SELECT")return;
+  if(!D)return;
   const y=window.scrollY;const m=map&&map.getCenter(),z=map&&map.getZoom();
   render();if(m&&map)map.setView(m,z,{animate:false});window.scrollTo(0,y);
 }
