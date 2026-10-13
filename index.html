@@ -437,7 +437,7 @@ function render(){
   }
   const head='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'<button id="zm" title="Alles kleiner">A−</button><button id="zp" title="Alles größer">A+</button></div>';
   if(!D){
-    screen(head+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kommt nach ein paar Sekunden nichts: 1) PIN stimmt? (Betreuer-PIN bzw. Kinder-PIN) 2) Auf dem Gerät der Einsatzleitung die App öffnen und „Mobilfunk / Internet“ einschalten. Im Team-Tab steht dort „Web-Kanal bereit“.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>');
+    screen(head+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kanal-ID: <b>'+esc(topic.slice(-6))+'</b> · Server: '+(connected?'verbunden':'nicht verbunden (Internet/Server?)')+' – die Kanal-ID muss mit der in der App (Team-Tab) übereinstimmen.</p><p class="sub">Kommt nach ein paar Sekunden nichts: 1) PIN stimmt? (Betreuer-PIN bzw. Kinder-PIN) 2) Auf dem Gerät der Einsatzleitung die App öffnen und „Mobilfunk / Internet“ einschalten. Im Team-Tab steht dort „Web-Kanal bereit“.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>');
     return;
   }
   const gs=D.groups||[];
