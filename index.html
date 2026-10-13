@@ -137,7 +137,7 @@ function onData(json){
   let b;try{b=JSON.parse(json)}catch(e){return}
   D=merge(D,b);if((b.groups||[]).length)lastData=Date.now();
   if(role==="kid"&&Array.isArray(b.messages)&&(b.groups||[]).length)D.messages=b.messages; // Kinder: Stand der Einsatzleitung gilt
-  if(role==="sup"&&(b.groups||[]).length&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
+  if(role==="sup"&&(b.groups||[]).length&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal)."+((D.supervisors||[]).length?" Eingetragen sind: "+(D.supervisors||[]).map(x=>x.name).join(", ")+".":" Dort ist noch kein Betreuer eingetragen – erst in der App im Team-Tab hinzufügen.");logout(false);return}
   if(D.endFlag&&!isEL()){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
   render();drawLayers();checkMsgs();
 }
@@ -303,7 +303,7 @@ document.getElementById("msg").addEventListener("click",e=>{if(e.target.closest(
 const sf={title:"",text:"",all:true,leader:false,kids:false,groups:[],people:[],style:1,color:0,dur:10,vibrate:true,status:""};
 function isLeaderRole(){const s=(D.supervisors||[]).find(x=>String(x.id)===me);return !!s&&s.role===0}
 function sendHtml(){
-  const gs=D.groups||[],sup=(D.supervisors||[]).filter(x=>String(x.id)!==me);
+  const gs=D.groups||[],sup=[...(D.supervisors||[])].sort((a,b)=>((a.role<0?99:a.role)-(b.role<0?99:b.role))||String(a.name).localeCompare(b.name,'de')).filter(x=>String(x.id)!==me);
   const chip=(on,k,t)=>'<button class="chip'+(on?" on":"")+'" data-sf="'+k+'">'+esc(t)+'</button>';
   return '<div class="card" style="margin-bottom:12px"><h2>Nachricht senden</h2>'+
     '<div style="display:flex;flex-direction:column;gap:8px"><input id="sf-t" placeholder="Titel (leer = Nachricht von …)" maxlength="40"><textarea id="sf-x" placeholder="Nachricht" maxlength="300"></textarea></div>'+
@@ -366,7 +366,7 @@ async function act(a,p){
   try{client.publish(topic,await encrypt(JSON.stringify({cmd:"act",name:uname,a,p})),{qos:1,retain:false});toast("Gesendet …")}catch(e){toast("Senden fehlgeschlagen")}
 }
 function ctlHtml(){
-  const gs=D.groups||[],sup=D.supervisors||[];
+  const gs=D.groups||[],sup=[...(D.supervisors||[])].sort((a,b)=>((a.role<0?99:a.role)-(b.role<0?99:b.role))||String(a.name).localeCompare(b.name,'de'));
   const sec=(k,t,body)=>'<div class="card sec" style="margin-bottom:12px"><button class="h" data-sec="'+k+'"><span>'+t+'</span><span>'+(ctlOpen[k]?"−":"+")+'</span></button>'+(ctlOpen[k]?'<div class="body">'+body+'</div>':'')+'</div>';
   let h='<h2 style="margin:4px 4px 8px">Einstellungen (Einsatzleitung)</h2>';
   h+=sec("groups","Gruppen & Übung",gs.map(g=>{
