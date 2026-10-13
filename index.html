@@ -33,6 +33,17 @@ button{cursor:pointer}button.pr{background:var(--pr);color:#fff;border:0;font-we
 .led{width:9px;height:9px;border-radius:50%;background:var(--sub)}.led.on{background:var(--ok);box-shadow:0 0 0 3px rgba(48,176,80,.25)}
 #mapbox,#map{height:50vh;min-height:280px;border-radius:18px;overflow:hidden}
 #top,#mid,#send,#ctl,#bottom{zoom:var(--z,1)}
+/* Hochkant: Karte groß direkt unter der Kopfzeile, Inhalt darunter; Tablet hochkant nutzt die Breite */
+@media (orientation:portrait){
+  .wrap{padding:8px;gap:10px}
+  #mapbox,#map{height:58svh;height:58dvh;min-height:300px;border-radius:14px}
+}
+@media (orientation:portrait) and (min-width:700px){
+  .wrap{max-width:none;padding:12px}
+  #mapbox,#map{height:56dvh}
+  #bottom{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+  #bottom>.sub:last-child,#bottom>.log{grid-column:1/-1}
+}
 @media (orientation:landscape) and (min-width:760px){
   .wrap:not(.solo){max-width:none;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);column-gap:12px;align-items:start}
   .wrap:not(.solo) #mapbox,.wrap:not(.solo) #map{height:calc(100vh - 24px);min-height:0}
