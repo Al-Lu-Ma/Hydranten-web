@@ -329,6 +329,7 @@ function sendHtml(){
     '<button class="pr" id="sf-go" style="width:100%">Senden</button><div class="sub" id="sf-st" style="margin-top:8px">'+esc(sf.status)+'</div></div>';
 }
 function renderSend(){
+  put("send","");return; // Nachrichten schreiben ist abgeschaltet
   if(role==="kid"||!D){put("send","");return}
   const el=document.getElementById("send"),t=document.getElementById("sf-t"),x=document.getElementById("sf-x");
   const html=sendHtml();
