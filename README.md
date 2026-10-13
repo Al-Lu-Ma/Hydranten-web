@@ -6,7 +6,7 @@ Nur-Lesen-Ansicht für Betreuer (iPhone, Android, Browser). Keine Installation n
 
 ## Anmelden
 - **Name** des Betreuers (genau wie im Team-Tab der App eingetragen)
-- **PIN** (5 Ziffern) – steht bei der Einsatzleitung in der App: Team-Tab → Cloud-Abgleich
+- **PIN** (8 Ziffern) – steht bei der Einsatzleitung in der App: Team-Tab → Web-Zugang
 
 Tipp auf dem iPhone: Link in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
 

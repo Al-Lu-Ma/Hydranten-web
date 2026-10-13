@@ -74,10 +74,13 @@ const myId="w"+Math.random().toString(36).slice(2,9).padEnd(7,"0"), senderId=myI
 
 // ---------- Verschlüsselung (wie in der App: PBKDF2-SHA1 · AES-256-GCM · gzip) ----------
 async function setupKey(c){
-  const base=await crypto.subtle.importKey("raw",enc.encode(c),"PBKDF2",false,["deriveKey"]);
-  key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:enc.encode("hydranten-uebung-v1"),iterations:20000,hash:"SHA-1"},base,{name:"AES-GCM",length:256},false,["encrypt","decrypt"]);
-  const h=await crypto.subtle.digest("SHA-256",enc.encode((role==="kid"?"kidstopic|":"webtopic|")+c));
-  topic="hydranten-uebung/v1/"+hex(h).slice(0,32);
+  // v2: eigener Salt je Kanal, 120000 Runden; der Themen-Name wird aus dem Schlüssel abgeleitet (nicht direkt aus der PIN)
+  const base=await crypto.subtle.importKey("raw",enc.encode(c),"PBKDF2",false,["deriveBits"]);
+  const raw=await crypto.subtle.deriveBits({name:"PBKDF2",salt:enc.encode("hu-v2|"+(role==="kid"?2:1)),iterations:120000,hash:"SHA-1"},base,256);
+  key=await crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+  const hk=await crypto.subtle.importKey("raw",raw,{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  const t=await crypto.subtle.sign("HMAC",hk,enc.encode("topic"));
+  topic="hydranten-uebung/v2/"+hex(t).slice(0,32);
 }
 async function pipe(data,stream){return new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(stream)).arrayBuffer())}
 async function decrypt(buf){
@@ -134,7 +137,7 @@ async function hello(){
   try{client.publish(topic,await encrypt(JSON.stringify({v:1,hydrants:[],groups:[],supervisors:[],log:[]})),{qos:1,retain:false})}catch(e){}
 }
 function connect(){
-  if(code.length!==5)return render();
+  if(code.length!==8)return render();
   render();
   setupKey(code).then(()=>{
     try{client&&client.end(true)}catch(e){}
@@ -339,13 +342,13 @@ function legend(){
 function screen(html){put("top",html);put("mid","");put("bottom","");showMap(false)}
 function render(){
   if(ended){screen('<div class="card lock"><h1>Übung beendet</h1><p class="sub">Die Daten wurden von diesem Gerät gelöscht. Danke fürs Mitmachen!</p></div>');return}
-  if(code.length!==5||(role==="sup"&&!uname)){
+  if(code.length!==8||(role==="sup"&&!uname)){
     const kid=tab==="kid";
     screen('<div class="card"><h1>Hydranten-Übung</h1><p class="sub" style="margin:4px 0 12px">Nur-Lesen-Ansicht. Die PIN bekommst du von der Einsatzleitung.</p>'+
       '<div class="seg" style="margin-bottom:12px"><button data-t="sup" class="'+(kid?"":"on")+'">Betreuer</button><button data-t="kid" class="'+(kid?"on":"")+'">Kinder</button></div>'+
       (loginErr?'<p class="err">'+esc(loginErr)+'</p>':'')+
       '<div style="display:flex;flex-direction:column;gap:8px">'+(kid?'':'<input id="n" placeholder="Name" autocomplete="name" value="'+esc(uname)+'">')+
-      '<input id="c" inputmode="numeric" maxlength="5" placeholder="PIN (5 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>');
+      '<input id="c" inputmode="numeric" maxlength="8" placeholder="PIN (8 Ziffern)"><button class="pr" id="go">Anmelden</button></div></div>');
     return;
   }
   const head='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'</div>';
@@ -398,13 +401,13 @@ document.addEventListener("click",e=>{
   else if(t.id==="loc")locate();
   else if(t.id==="go"){
     const kid=tab==="kid",n=kid?"-":document.getElementById("n").value.trim(),p=document.getElementById("c").value.trim();
-    if(!n||!/^\d{5}$/.test(p)){loginErr=kid?"Bitte die 5-stellige PIN eingeben.":"Bitte Name und 5-stellige PIN eingeben.";render();return}
+    if(!n||!/^\d{8}$/.test(p)){loginErr=kid?"Bitte die 8-stellige PIN eingeben.":"Bitte Name und 8-stellige PIN eingeben.";render();return}
     role=tab;uname=kid?"":n;code=p;loginErr="";LS.set("role",role);LS.set("name",uname);LS.set("pin",p);connect();
   }
 });
 // Nur Texte/Zeiten auffrischen – die Karte bleibt unberührt
 setInterval(()=>{if(D&&!ended)render()},5000);
-tab=role;render();if(code.length===5)connect();
+tab=role;render();if(code.length===8)connect();
 </script>
 </body>
 </html>
