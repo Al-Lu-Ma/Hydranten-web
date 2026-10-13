@@ -1,6 +1,6 @@
 # Hydranten-Übung – Betreuer-Ansicht (Web)
 
-**Link:** https://al-lu-ma.github.io/hydranten-web/
+**Link:** https://al-lu-ma.github.io/Hydranten-web/
 
 Nur-Lesen-Ansicht für Betreuer (iPhone, Android, Browser). Keine Installation nötig.
 
