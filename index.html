@@ -30,7 +30,7 @@ button{cursor:pointer}button.pr{background:var(--pr);color:#fff;border:0;font-we
 .seg button{flex:1;border:0;background:transparent;border-radius:10px;padding:10px}
 .seg button.on{background:var(--card);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}
-.led{width:9px;height:9px;border-radius:50%;background:var(--sub)}.led.on{background:var(--ok);box-shadow:0 0 0 3px rgba(48,176,80,.25)}
+.led{width:9px;height:9px;border-radius:50%;background:var(--sub)}.led.warn{background:#ff9500}.led.bad{background:var(--bad)}.led.on{background:var(--ok);box-shadow:0 0 0 3px rgba(48,176,80,.25)}
 #mapbox,#map{height:50vh;min-height:280px;border-radius:18px;overflow:hidden}
 #top,#mid,#send,#ctl,#bottom{zoom:var(--z,1)}
 /* Hochkant: Karte groß direkt unter der Kopfzeile, Inhalt darunter; Tablet hochkant nutzt die Breite */
@@ -191,7 +191,7 @@ function connect(){
   }).catch(e=>{connErr="Fehler: "+(e&&e.message||e);render()});
 }
 // Heartbeat: regelmäßig den aktuellen Stand anfordern; beim Zurückkehren in die Seite sofort
-setInterval(()=>{if(connected&&(!lastData||Date.now()-lastData>20000))hello()},4000);
+setInterval(()=>{if(connected&&(!lastData||Date.now()-lastData>12000))hello()},4000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&clients.length){clients.forEach(c=>{if(!c.connected)try{c.reconnect()}catch(e){}});hello()}});
 
 // ---------- Karte (bleibt bestehen – wird nie neu gebaut, deshalb kein Flackern) ----------
@@ -492,7 +492,16 @@ window.addEventListener("orientationchange",()=>setTimeout(()=>{if(map)map.inval
 // ---------- Anzeige ----------
 const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
 const clock=ms=>new Date(ms).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-function status(){return '<span class="pill"><span class="led'+(connected&&lastData?" on":"")+'"></span>'+(connected?(lastData?"Live · "+clock(lastData):"Warte auf Daten …"):"Verbinde …")+'</span>'}
+function statusInner(){
+  if(!connected)return '<span class="led"></span>Verbinde …';
+  if(!lastData)return '<span class="led"></span>Warte auf Daten …';
+  const age=Math.round((Date.now()-lastData)/1000);
+  if(age<=30)return '<span class="led on"></span>Aktuell · Stand '+clock(lastData);
+  if(age<=120)return '<span class="led warn"></span>Stand vor '+age+' s';
+  return '<span class="led bad"></span>Veraltet · Stand '+clock(lastData)+' – Einsatzleitung online?';
+}
+function status(){return '<span class="pill" id="stp">'+statusInner()+'</span>'}
+setInterval(()=>{const e=document.getElementById("stp");if(e)e.innerHTML=statusInner()},3000);
 function legend(){
   if(role==="kid")return '<details class="card" open><summary>Legende</summary><div class="leg" style="margin-top:10px"><span>🏠 Gerätehaus</span><span><i style="background:#0a84ff;transform:rotate(45deg)"></i>Eure Gruppe (zuletzt gesehen)</span><span><i class="s"></i>Euer Weg</span><span><i class="c"></i>Du (mit „Mein Standort“)</span></div></details>';
   return '<details class="card" open><summary>Legende</summary><div class="leg" style="margin-top:10px">'+
