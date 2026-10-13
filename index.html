@@ -114,7 +114,7 @@ function merge(a,b){
 }
 function onData(json){
   let b;try{b=JSON.parse(json)}catch(e){return}
-  D=merge(D,b);lastData=Date.now();
+  D=merge(D,b);if((b.groups||[]).length)lastData=Date.now();
   if(role==="kid"&&Array.isArray(b.messages)&&(b.groups||[]).length)D.messages=b.messages; // Kinder: Stand der Einsatzleitung gilt
   if(D.endFlag){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
   if(role==="sup"&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
@@ -139,14 +139,14 @@ function connect(){
   setupKey(code).then(()=>{
     try{client&&client.end(true)}catch(e){}
     client=mqtt.connect(BROKERS[brokerIdx%BROKERS.length],{clientId:"hu-"+myId+Math.floor(Math.random()*99999),clean:true,reconnectPeriod:4000,connectTimeout:10000,keepalive:30});
-    client.on("connect",()=>{connected=true;client.subscribe(topic,{qos:1});hello();render()});
+    client.on("connect",()=>{connected=true;client.subscribe(topic,{qos:1},err=>{if(!err)hello()});render()});
     client.on("message",async(t,m)=>{try{const j=await decrypt(m);if(j)onData(j)}catch(e){}});
     client.on("close",()=>{connected=false;render()});
     client.on("error",()=>{brokerIdx++;connected=false;render()});
   }).catch(()=>render());
 }
 // Heartbeat: regelmäßig den aktuellen Stand anfordern; beim Zurückkehren in die Seite sofort
-setInterval(()=>{if(connected&&Date.now()-lastData>20000)hello()},10000);
+setInterval(()=>{if(connected&&(!lastData||Date.now()-lastData>20000))hello()},4000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&client){if(!connected)try{client.reconnect()}catch(e){}else hello()}});
 
 // ---------- Karte (bleibt bestehen – wird nie neu gebaut, deshalb kein Flackern) ----------
@@ -350,7 +350,7 @@ function render(){
   }
   const head='<div class="row"><h1 style="flex:1">Hydranten-Übung</h1>'+status()+'</div>';
   if(!D){
-    screen(head+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kommt nichts: PIN prüfen und ob dort der Cloud-Abgleich an ist.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>');
+    screen(head+'<div class="card"><p>Warte auf Daten der Einsatzleitung …</p><p class="sub">Kommt nach ein paar Sekunden nichts: 1) PIN stimmt? (Betreuer-PIN bzw. Kinder-PIN) 2) Auf dem Gerät der Einsatzleitung die App öffnen und „Mobilfunk / Internet“ einschalten. Im Team-Tab steht dort „Web-Kanal bereit“.</p><div class="row"><button id="rf">Neu laden</button><button id="lo">Abmelden</button></div></div>');
     return;
   }
   const gs=D.groups||[];
