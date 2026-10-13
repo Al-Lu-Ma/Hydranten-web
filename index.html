@@ -104,7 +104,7 @@ function merge(a,b){
     hydrants:mergeById(a.hydrants||[],b.hydrants||[],x=>x.id).filter(keep),
     supervisors:mergeById(a.supervisors||[],b.supervisors||[],x=>x.id).filter(keep),
     groups:mergeById(a.groups||[],b.groups||[],x=>x.id),
-    messages:[...new Map([...(a.messages||[]),...(b.messages||[])].map(m=>[m.id,m])).values()].sort((x,y)=>x.id-y.id).slice(-60),
+    messages:[...new Map([...(a.messages||[]),...(b.messages||[])].filter(m=>!tomb.has(m.id)).map(m=>[m.id,m])).values()].sort((x,y)=>x.id-y.id).slice(-60),
     log:[...logs.values()].sort((x,y)=>x.at-y.at||x.id-y.id),logClearedAt:cleared,deleted:[...tomb.entries()],
     settingsAt:Math.max(a.settingsAt||0,b.settingsAt||0),
     baseLat:newS?b.baseLat:a.baseLat,baseLon:newS?b.baseLon:a.baseLon,
@@ -113,6 +113,7 @@ function merge(a,b){
 function onData(json){
   let b;try{b=JSON.parse(json)}catch(e){return}
   D=merge(D,b);lastData=Date.now();
+  if(role==="kid"&&Array.isArray(b.messages)&&(b.groups||[]).length)D.messages=b.messages; // Kinder: Stand der Einsatzleitung gilt
   if(D.endFlag){ended=true;D=null;LS.del("pin");LS.del("name");try{client&&client.end(true)}catch(e){}render();return}
   if(role==="sup"&&!findMe()){loginErr="Name nicht gefunden. Schreibe ihn genau wie im Team-Tab der App (Groß-/Kleinschreibung egal).";logout(false);return}
   render();drawLayers();checkMsgs();
